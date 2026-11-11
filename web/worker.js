@@ -20,6 +20,7 @@ onmessage = async (e) => {
   };
   try {
     const mod = await createKint5(moduleArg);
+    mod.ccall('kp_set_paths', null, ['string', 'string'], [m.pgmShown || 'pgm/', m.appShown || 'app/']);
     const rc = mod._kp_main(m.screenW, m.screenH, m.w, m.h);
     if (rc) postMessage({ t: 'crash', text: `The game could not start (code ${rc}).` });
   } catch (err) {

@@ -130,17 +130,20 @@ function showCrash(text) {
     [button('Back to games', backToGames), button('Restart', () => location.reload(), true)]);
 }
 
-function start() {
+async function start() {
   if (!crossOriginIsolated) {
     showCrash('This page must be served by server.py (it needs cross-origin isolation for SharedArrayBuffer).');
     return;
   }
   document.title = GAME;
+  let info = {};
+  try { info = await (await fetch('/api/info/' + encodeURIComponent(GAME))).json(); } catch {}
   const sab = new SharedArrayBuffer((BASE + RING_CAP * EV_SIZE) * 4);
   ring = new Int32Array(sab);
   const { w, h } = viewSize();
   sizeCanvas(w, h);
   worker.postMessage({ t: 'init', game: GAME, sab, ringCap: RING_CAP, music: false,
+                       pgmShown: info.pgm, appShown: info.app,
                        screenW: screen.width, screenH: screen.height, w, h });
   canvas.focus();
 }

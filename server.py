@@ -16,6 +16,7 @@ import fnmatch
 import json
 import mimetypes
 import os
+import plistlib
 import posixpath
 import subprocess
 import sys
@@ -44,6 +45,24 @@ class Game:
             self.name = self.name[:-4]
         self.resources = bundle / "Contents" / "Resources"
         self.engine = self._detect_engine()
+        self.eks_name = self._read_eks_name()
+
+    def _read_eks_name(self) -> str:
+        """The name the native Mac app uses for its save folder (e.g. "MESH Hero Defiant")."""
+        try:
+            with open(self.bundle / "Contents" / "Info.plist", "rb") as f:
+                return plistlib.load(f).get("EKSGameName") or self.name
+        except (OSError, plistlib.InvalidFileException):
+            return self.name
+
+    def shown_paths(self) -> dict:
+        """Folder paths as the native Mac app reports them to the game.
+        The MESH games use these to work out which game they are."""
+        home = Path.home()
+        return {
+            "pgm": str(self.resources.resolve()) + "/",
+            "app": f"{home}/Library/Application Support/Everett Kaser Software/{self.eks_name}/",
+        }
 
     def _detect_engine(self) -> int:
         try:
@@ -233,6 +252,9 @@ class Handler(BaseHTTPRequestHandler):
             g = GAMES.get(path[len("/api/icon/"):])
             p = icon_png(g) if g else None
             return self.send_file(p) if p else self.not_found()
+        if path.startswith("/api/info/"):
+            g = GAMES.get(path[len("/api/info/"):])
+            return self.send_json({"name": g.name, "engine": g.engine, **g.shown_paths()}) if g else self.not_found()
         if path.startswith("/api/g/"):
             return self.game_api("GET", path, query)
         if path.startswith("/web/"):

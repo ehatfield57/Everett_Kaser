@@ -286,6 +286,17 @@ def patch_pmach_c():
         "screen size",
     )
 
+    # Report the folder paths the native Mac app would use. The MESH games
+    # work out which game they are from these.
+    s = replace_once(s, "\t\t\tstrcpy((char*)pMem, AppDataPath);\n",
+                     "\t\t\tstrcpy((char*)pMem, AppDataPathShown);\t/* WEB PORT */\n", "shown AppDataPath")
+    s = replace_once(s, "\t\t\tstrcpy((char*)pMem, PgmPath);\n",
+                     "\t\t\tstrcpy((char*)pMem, PgmPathShown);\t/* WEB PORT */\n", "shown PgmPath")
+    s = replace_once(s, "extern TCHAR\tPgmPath[PATHLEN], TmpPath[PATHLEN], AppDataPath[PATHLEN];\n",
+                     "extern TCHAR\tPgmPath[PATHLEN], TmpPath[PATHLEN], AppDataPath[PATHLEN];\n"
+                     "extern TCHAR\tPgmPathShown[PATHLEN], AppDataPathShown[PATHLEN];\t/* WEB PORT */\n",
+                     "shown path externs")
+
     # System-font text (GDI) -> browser canvas
     s = replace_between(s, "#define\tNUMSYSFONT\t100", "//#endif // _IS_BB", SYSFONT_PORT, "sysfont")
 

@@ -82,6 +82,10 @@ TCHAR	PgmPath[PATHLEN]     = "pgm/";	// the game's own (read-only) files
 TCHAR	AppDataPath[PATHLEN] = "app/";	// the player's saved files
 TCHAR	TmpPath[PATHLEN];
 TCHAR	PartPath[PATHLEN];
+// The paths the game is told about (as the native Mac app would report them).
+// Some games use them to tell which game they are, so they must look real.
+TCHAR	PgmPathShown[PATHLEN]     = "pgm/";
+TCHAR	AppDataPathShown[PATHLEN] = "app/";
 
 static double	TicksStart;
 static DWORD	TimerPeriod=0;			// 0 = timer off
@@ -785,6 +789,11 @@ EMSCRIPTEN_KEEPALIVE void kp_event(int type, int a, int b, int c, int d) {
 }
 
 /* ============================================================ main loop */
+EMSCRIPTEN_KEEPALIVE void kp_set_paths(const char *pgmShown, const char *appShown) {
+	strncpy(PgmPathShown, pgmShown, PATHLEN-1);
+	strncpy(AppDataPathShown, appShown, PATHLEN-1);
+}
+
 EMSCRIPTEN_KEEPALIVE int kp_main(int screenW, int screenH, int winW, int winH) {
 
 	DWORD	IdleCount;

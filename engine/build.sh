@@ -19,8 +19,8 @@ emcc $OPT \
   -sMODULARIZE=1 -sEXPORT_NAME=createKint5 \
   -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sMAXIMUM_MEMORY=2GB \
   -sSTACK_SIZE=1MB \
-  -sEXPORTED_FUNCTIONS=_kp_main,_kp_event \
-  -sEXPORTED_RUNTIME_METHODS=HEAPU8 \
+  -sEXPORTED_FUNCTIONS=_kp_main,_kp_event,_kp_set_paths \
+  -sEXPORTED_RUNTIME_METHODS=HEAPU8,ccall \
   -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
   -o ../web/kint5.js
 
