@@ -9,7 +9,7 @@
 // Module.kint (set up in worker.js) holds the shared state.
 
 addToLibrary({
-  $K__deps: ['$UTF8ToString', '$stringToUTF8'],
+  $K__deps: ['$UTF8ToString', '$stringToUTF8', '$lengthBytesUTF8'],
   $K: {
     files: new Map(),     // handle -> {data, pos, len, writable, path, dirty}
     nextHandle: 3,
@@ -208,6 +208,12 @@ addToLibrary({
   js_rmdir: function (p) { K.httpSend('POST', 'rmdir', K.str(p)); },
   js_delete__deps: ['$K'],
   js_delete: function (p) { K.httpSend('POST', 'delete', K.str(p)); },
+  js_rename__deps: ['$K'],
+  js_rename: function (from, to) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', K.api('rename', K.str(from)) + '&to=' + encodeURIComponent(K.str(to)), false);
+    xhr.send();
+  },
 
   // ---------------------------------------------------------- sound/music
   js_sound_file__deps: ['$K'],
@@ -247,6 +253,14 @@ addToLibrary({
   js_message: function (p) { const text = K.str(p); console.warn('KINT:', text); K.post({ t: 'message', text }); },
   js_clipboard_set__deps: ['$K'],
   js_clipboard_set: function (p) { K.post({ t: 'clipboard', text: K.str(p) }); },
+  js_open_url__deps: ['$K'],
+  js_open_url: function (p) { K.post({ t: 'openurl', url: K.str(p) }); },
+  // Upper-case the single UTF-8 character at ptr (buffer holds at least 5 bytes)
+  js_toupper__deps: ['$K'],
+  js_toupper: function (ptr) {
+    const s = UTF8ToString(ptr), u = s.toUpperCase();
+    if (u !== s && lengthBytesUTF8(u) <= 4) stringToUTF8(u, ptr, 5);
+  },
   js_exit__deps: ['$K'],
   js_exit: function () { K.post({ t: 'exit' }); },
 
@@ -300,7 +314,8 @@ addToLibrary({
   js_sysfont_char__deps: ['$K'],
   js_sysfont_char: function (i) { return K.sf.text.charCodeAt(i) || 0; },
   js_sysfont_draw__deps: ['$K'],
-  js_sysfont_draw: function (bits, linelen, bw, bh, n, fclr) {
+  // bpp: 3 for KINT 5's BGR bitmaps, 4 for KINT 6's BGRA (alpha forced opaque)
+  js_sysfont_draw: function (bits, linelen, bw, bh, n, fclr, bpp) {
     const sf = K.sf;
     if (sf.canvas.width < bw || sf.canvas.height < bh) {
       sf.canvas.width = Math.max(sf.canvas.width, bw);
@@ -312,7 +327,7 @@ addToLibrary({
     const d = img.data;
     for (let y = 0; y < bh; y++) {
       let s = bits + y * linelen, o = y * bw * 4;
-      for (let x = 0; x < bw; x++, s += 3, o += 4) {
+      for (let x = 0; x < bw; x++, s += bpp, o += 4) {
         d[o] = HEAPU8[s + 2]; d[o + 1] = HEAPU8[s + 1]; d[o + 2] = HEAPU8[s]; d[o + 3] = 255;
       }
     }
@@ -334,8 +349,9 @@ addToLibrary({
     const out = ctx.getImageData(0, 0, bw, bh).data;
     for (let y = 0; y < bh; y++) {
       let s = bits + y * linelen, o = y * bw * 4;
-      for (let x = 0; x < bw; x++, s += 3, o += 4) {
+      for (let x = 0; x < bw; x++, s += bpp, o += 4) {
         HEAPU8[s] = out[o + 2]; HEAPU8[s + 1] = out[o + 1]; HEAPU8[s + 2] = out[o];
+        if (bpp === 4) HEAPU8[s + 3] = 255;
       }
     }
   },

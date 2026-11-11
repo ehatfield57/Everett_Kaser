@@ -6,10 +6,13 @@ saves/
 kint_src/
 *.zip
 engine/k5/gen/
+engine/k6/gen/
 
 # Build output (contains compiled KINT code; rebuild with engine/build.sh)
 web/kint5.js
 web/kint5.wasm
+web/kint6.js
+web/kint6.wasm
 
 # Local tooling
 .venv/

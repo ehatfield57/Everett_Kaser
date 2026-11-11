@@ -70,7 +70,7 @@ SYSFONT_PORT = r'''#define	NUMSYSFONT	100
 extern int  js_sysfont_prepare(const char *utf8, int h, int fontflags);
 extern int  js_sysfont_width(int n);
 extern int  js_sysfont_char(int i);
-extern void js_sysfont_draw(BYTE *bits, int linelen, int bw, int bh, int n, DWORD fclr);
+extern void js_sysfont_draw(BYTE *bits, int linelen, int bw, int bh, int n, DWORD fclr, int bpp);
 
 int		SysFontW;	// width of SysFontBMB
 int		SysFontH;	// height of SysFontBMB
@@ -107,7 +107,7 @@ static void SysFontFill(int w, int h, COLORREF clr) {
 static void SysFontText(int n, int w, int h, COLORREF fclr) {
 	if( w > SysFontBMB->physW ) w = SysFontBMB->physW;
 	if( h > SysFontBMB->physH ) h = SysFontBMB->physH;
-	if( n > 0 && w > 0 && h > 0 ) js_sysfont_draw(SysFontBMB->pBits, SysFontBMB->linelen, w, h, n, fclr);
+	if( n > 0 && w > 0 && h > 0 ) js_sysfont_draw(SysFontBMB->pBits, SysFontBMB->linelen, w, h, n, fclr, 3);
 }
 
 DWORD DrawSysFontText(PBMB pBM, char *pText, int x, int y, int w, int h, int flags, COLORREF bclr, COLORREF fclr, long *pW) {

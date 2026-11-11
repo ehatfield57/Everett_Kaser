@@ -1,7 +1,7 @@
-// worker.js - runs one KINT 5 game.  The interpreter's main loop takes over
-// this worker completely; the page talks to it through a SharedArrayBuffer
-// (input) and receives postMessage()s (screen, sound, title, ...).
-importScripts('/web/kint5.js');
+// worker.js - runs one game with the KINT 5 or KINT 6 interpreter.  The
+// interpreter's main loop takes over this worker completely; the page talks
+// to it through a SharedArrayBuffer (input) and receives postMessage()s
+// (screen, sound, title, ...).
 
 onmessage = async (e) => {
   const m = e.data;
@@ -19,7 +19,10 @@ onmessage = async (e) => {
     printErr: (s) => console.error(s),
   };
   try {
-    const mod = await createKint5(moduleArg);
+    const engine = m.engine === 6 ? 6 : 5;
+    importScripts(`/web/kint${engine}.js`);
+    const create = engine === 6 ? createKint6 : createKint5;
+    const mod = await create(moduleArg);
     mod.ccall('kp_set_paths', null, ['string', 'string'], [m.pgmShown || 'pgm/', m.appShown || 'app/']);
     const rc = mod._kp_main(m.screenW, m.screenH, m.w, m.h);
     if (rc) postMessage({ t: 'crash', text: `The game could not start (code ${rc}).` });

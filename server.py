@@ -328,6 +328,18 @@ class Handler(BaseHTTPRequestHandler):
             os.replace(tmp, p)
             return self.send_bytes(b"ok", "text/plain")
 
+        if method == "POST" and op == "rename":
+            to = (query.get("to") or [""])[0]
+            src = resolve(game, kpath)
+            dst = resolve(game, to, must_exist=False) if to.startswith("app/") else None
+            if not src or not dst:
+                return self.not_found()
+            try:
+                os.replace(src, dst)
+            except OSError:
+                return self.send_bytes(b"failed", "text/plain", HTTPStatus.CONFLICT)
+            return self.send_bytes(b"ok", "text/plain")
+
         if method == "POST" and op in ("mkdir", "rmdir", "delete"):
             p = resolve(game, kpath, must_exist=(op != "mkdir"))
             if not p:

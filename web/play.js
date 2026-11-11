@@ -14,7 +14,7 @@ const box = document.getElementById('box');
 // Must match js_poll_input() in kint_lib.js: [head, tail, ..., events of 6 ints]
 const RING_CAP = 4096, EV_SIZE = 6, BASE = 8;
 const EV = { MOUSEMOVE: 1, MOUSEDOWN: 2, MOUSEUP: 3, WHEEL: 4, HWHEEL: 5, KEYDOWN: 6, KEYUP: 7,
-             CHAR: 8, RESIZE: 9, BLUR: 10, MUSICDONE: 11, CLOSE: 12, HIDDEN: 13 };
+             CHAR: 8, RESIZE: 9, BLUR: 10, MUSICDONE: 11, CLOSE: 12, HIDDEN: 13, FOCUS: 14 };
 let ring = null;
 
 function send(type, a = 0, b = 0, c = 0, d = 0) {
@@ -157,6 +157,7 @@ worker.onmessage = (e) => {
     case 'musicpause': pauseMusic(m.pause); break;
     case 'title': document.title = m.text || GAME; break;
     case 'cursor': canvas.style.cursor = m.c === 1 ? 'wait' : m.c === 2 ? 'pointer' : 'default'; break;
+    case 'openurl': if (/^https?:/i.test(m.url || '')) window.open(m.url, '_blank', 'noopener'); break;
     case 'clipboard': navigator.clipboard?.writeText(m.text).catch(() => {}); break;
     case 'message':
       showBox(`<p>${escapeHtml(m.text)}</p>`, [button('OK', hideBox, true)]);
@@ -187,7 +188,7 @@ async function start() {
   const { w, h } = viewSize();
   sizeCanvas(w, h);
   worker.postMessage({ t: 'init', game: GAME, sab, ringCap: RING_CAP, music: true,
-                       pgmShown: info.pgm, appShown: info.app,
+                       engine: info.engine, pgmShown: info.pgm, appShown: info.app,
                        screenW: screen.width, screenH: screen.height, w, h });
   canvas.focus();
 }
@@ -278,6 +279,7 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { const { w, h } = viewSize(); send(EV.RESIZE, w, h); }, 120);
 });
 window.addEventListener('blur', () => send(EV.BLUR));
+window.addEventListener('focus', () => send(EV.FOCUS));
 document.addEventListener('visibilitychange', () => send(EV.HIDDEN, document.hidden ? 1 : 0));
 window.addEventListener('pagehide', () => send(EV.CLOSE));
 

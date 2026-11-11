@@ -46,7 +46,7 @@
   fetch('/api/games').then(r => r.json()).then(games => {
     for (const g of games) {
       const a = document.createElement('a');
-      a.className = 'game' + (g.engine === 5 ? '' : ' disabled');
+      a.className = 'game' + (g.engine ? '' : ' disabled');
       a.href = '/play?g=' + encodeURIComponent(g.name);
       a.dataset.name = g.name.toLowerCase();
       const img = document.createElement('img');
@@ -57,10 +57,10 @@
       name.className = 'name';
       name.textContent = g.name;
       a.append(img, name);
-      if (g.engine !== 5) {
+      if (!g.engine) {
         const note = document.createElement('div');
         note.className = 'note';
-        note.textContent = g.engine === 6 ? 'Needs KINT 6 (not yet)' : 'Not recognised';
+        note.textContent = 'Not recognised';
         a.append(note);
       }
       list.append(a);
