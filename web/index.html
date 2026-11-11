@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaser Games</title>
+<style>
+  :root {
+    --bg: #f4f1ea; --card: #fffdf8; --ink: #2b2620; --muted: #7a7064; --line: #e2dccf; --accent: #8a3b1e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1b18; --card: #282521; --ink: #ece6dc; --muted: #a39a8c; --line: #3a362f; --accent: #e08a5c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { max-width: 1100px; margin: 0 auto; padding: 32px 16px 8px; }
+  h1 { font: 600 28px/1.2 Georgia, "Times New Roman", serif; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--muted); }
+  #filter { margin-top: 16px; width: min(320px, 100%); padding: 8px 12px; border-radius: 8px;
+            border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 14px;
+         grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  a.game { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 10px 14px;
+           border-radius: 12px; background: var(--card); border: 1px solid var(--line); color: inherit;
+           text-decoration: none; text-align: center; transition: transform .08s, box-shadow .08s; }
+  a.game:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.12); border-color: var(--accent); }
+  a.game img { width: 72px; height: 72px; object-fit: contain; }
+  a.game .name { font-weight: 600; }
+  a.game .note { font-size: 12px; color: var(--muted); }
+  a.game.disabled { opacity: .5; pointer-events: none; }
+  footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 32px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Everett Kaser's Games</h1>
+  <p>Running from your own copies, in the browser. Pick a game to play.</p>
+  <input id="filter" type="search" placeholder="Filter games…" autocomplete="off">
+</header>
+<main id="list"></main>
+<footer>Games © Everett Kaser Software — www.kaser.com. KINT interpreter used for personal use under its license.</footer>
+<script>
+  const list = document.getElementById('list');
+  const filter = document.getElementById('filter');
+  fetch('/api/games').then(r => r.json()).then(games => {
+    for (const g of games) {
+      const a = document.createElement('a');
+      a.className = 'game' + (g.engine === 5 ? '' : ' disabled');
+      a.href = '/play?g=' + encodeURIComponent(g.name);
+      a.dataset.name = g.name.toLowerCase();
+      const img = document.createElement('img');
+      img.src = '/api/icon/' + encodeURIComponent(g.name);
+      img.alt = '';
+      img.loading = 'lazy';
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = g.name;
+      a.append(img, name);
+      if (g.engine !== 5) {
+        const note = document.createElement('div');
+        note.className = 'note';
+        note.textContent = g.engine === 6 ? 'Needs KINT 6 (not yet)' : 'Not recognised';
+        a.append(note);
+      }
+      list.append(a);
+    }
+  });
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase();
+    for (const a of list.children) a.style.display = a.dataset.name.includes(q) ? '' : 'none';
+  });
+</script>
+</body>
+</html>

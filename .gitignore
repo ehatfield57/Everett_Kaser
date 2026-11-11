@@ -1,0 +1,18 @@
+# Your game installs and personal data
+games/
+saves/
+
+# Everett Kaser's KINT source and downloads (personal-use license: don't redistribute)
+kint_src/
+*.zip
+engine/k5/gen/
+
+# Build output (contains compiled KINT code; rebuild with engine/build.sh)
+web/kint5.js
+web/kint5.wasm
+
+# Local tooling
+.venv/
+.cache/
+__pycache__/
+.DS_Store
