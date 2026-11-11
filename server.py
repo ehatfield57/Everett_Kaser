@@ -31,6 +31,8 @@ GAMES_DIR = ROOT / "games"
 SAVES_DIR = ROOT / "saves"
 WEB_DIR = ROOT / "web"
 CACHE_DIR = ROOT / ".cache"
+# macOS's built-in General MIDI sound bank (what native Mac apps play MIDI through)
+SOUNDBANK = Path("/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls")
 
 mimetypes.add_type("application/wasm", ".wasm")
 mimetypes.add_type("text/javascript", ".js")
@@ -252,6 +254,8 @@ class Handler(BaseHTTPRequestHandler):
             g = GAMES.get(path[len("/api/icon/"):])
             p = icon_png(g) if g else None
             return self.send_file(p) if p else self.not_found()
+        if path == "/api/soundbank":
+            return self.send_file(SOUNDBANK)
         if path.startswith("/api/info/"):
             g = GAMES.get(path[len("/api/info/"):])
             return self.send_json({"name": g.name, "engine": g.engine, **g.shown_paths()}) if g else self.not_found()

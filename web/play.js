@@ -84,6 +84,49 @@ function stopSound() {
   if (current) { try { current.stop(); } catch {} current = null; }
 }
 
+// ------------------------------------------------------------------ music
+// MIDI music is played by SpessaSynth using macOS's own General MIDI sound
+// bank, the same one the native Mac apps use.
+const music = { setup: null, synth: null, seq: null, playing: false, songs: 0 };
+function musicSetup() {
+  if (!music.setup) {
+    music.setup = (async () => {
+      const ac = audioCtx();
+      await ac.audioWorklet.addModule('/web/vendor/spessasynth_processor.min.js');
+      const { WorkletSynthesizer, Sequencer } = await import('/web/vendor/spessasynth.js');
+      const bank = await (await fetch('/api/soundbank')).arrayBuffer();
+      const synth = new WorkletSynthesizer(ac);
+      synth.connect(ac.destination);
+      await synth.soundBankManager.addSoundBank(bank, 'main');
+      await synth.isReady;
+      const seq = new Sequencer(synth);
+      seq.loopCount = 0;
+      seq.eventHandler.addEvent('songEnded', 'kint', () => {
+        if (music.playing) { music.playing = false; send(EV.MUSICDONE); }
+      });
+      music.synth = synth;
+      music.seq = seq;
+    })().catch((err) => { console.error('music unavailable:', err); });
+  }
+  return music.setup;
+}
+async function playMusic(bytes) {
+  await musicSetup();
+  if (!music.seq) { send(EV.MUSICDONE); return; }
+  music.seq.loadNewSongList([{ binary: bytes, fileName: 'song.mid' }]);
+  music.seq.play();
+  music.playing = true;
+  music.songs++;
+}
+function stopMusic() {
+  music.playing = false;
+  if (music.seq) { music.seq.pause(); music.synth.stopAll(true); }
+}
+function pauseMusic(pause) {
+  if (!music.seq || !music.playing) return;
+  if (pause) { music.seq.pause(); music.synth.stopAll(true); } else music.seq.play();
+}
+
 // ----------------------------------------------------------------- screen
 function viewSize() {
   return { w: Math.max(1, Math.floor(window.innerWidth)), h: Math.max(1, Math.floor(window.innerHeight)) };
@@ -109,8 +152,9 @@ worker.onmessage = (e) => {
       break;
     case 'sound': playSound(m.bytes, m.nostop); break;
     case 'soundstop': stopSound(); break;
-    case 'music': /* MIDI music arrives in a later stage */ break;
-    case 'musicstop': case 'musicpause': break;
+    case 'music': playMusic(m.bytes); break;
+    case 'musicstop': stopMusic(); break;
+    case 'musicpause': pauseMusic(m.pause); break;
     case 'title': document.title = m.text || GAME; break;
     case 'cursor': canvas.style.cursor = m.c === 1 ? 'wait' : m.c === 2 ? 'pointer' : 'default'; break;
     case 'clipboard': navigator.clipboard?.writeText(m.text).catch(() => {}); break;
@@ -142,7 +186,7 @@ async function start() {
   ring = new Int32Array(sab);
   const { w, h } = viewSize();
   sizeCanvas(w, h);
-  worker.postMessage({ t: 'init', game: GAME, sab, ringCap: RING_CAP, music: false,
+  worker.postMessage({ t: 'init', game: GAME, sab, ringCap: RING_CAP, music: true,
                        pgmShown: info.pgm, appShown: info.app,
                        screenW: screen.width, screenH: screen.height, w, h });
   canvas.focus();

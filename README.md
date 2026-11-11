@@ -22,10 +22,17 @@ can save your settings and puzzles. Your saved files go in `saves/<game>/`.
 | `engine/patch_k5.py` | Copies Everett's KINT 5 source from `kint_src/` and applies the small web-port patches into `engine/k5/gen/` |
 | `engine/k5/kplat.c`, `kint_lib.js` | The browser platform layer (replaces Everett's Windows `main.c`) |
 | `engine/build.sh` | Rebuilds the WebAssembly interpreter (needs Emscripten) |
+| `web/vendor/` | SpessaSynth MIDI synthesizer (Apache-2.0), rebuilt with `npm install && npm run build` in `tools/music-bundle/` |
+
+## Music
+
+Background music (MIDI) is played by SpessaSynth using macOS's built-in
+General MIDI sound bank (`gs_instruments.dls`), the same one native Mac apps
+use. Music starts after your first click in the game, because Chrome only
+allows sound after you interact with the page.
 
 ## Not done yet
 
-- MIDI background music
 - The three KINT 6 games (Crocotile, Lair of Moriarty, Occam's Quilt)
 - Printing; pasting from the clipboard
 

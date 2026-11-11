@@ -1,0 +1,18 @@
+{
+  "name": "kaser-music-bundle",
+  "private": true,
+  "description": "Builds web/vendor/spessasynth.js (MIDI synthesizer) for the game page",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=esm --minify --outfile=../../web/vendor/spessasynth.js && cp node_modules/spessasynth_lib/dist/spessasynth_processor.min.js ../../web/vendor/ && cp node_modules/spessasynth_lib/LICENSE ../../web/vendor/SPESSASYNTH_LICENSE.txt"
+  },
+  "dependencies": {
+    "spessasynth_lib": "4.3.14",
+    "spessasynth_core": "4.3.20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "overrides": {
+    "spessasynth_core": "4.3.20"
+  }
+}
