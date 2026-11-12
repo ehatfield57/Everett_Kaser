@@ -87,6 +87,37 @@ game at once overwrite each other's progress.
 If macOS asks whether Python may accept incoming network connections, choose
 **Allow**.
 
+## Playing without the server (offline)
+
+A browser can keep its own copy of a game, so it keeps working when the
+server is stopped or the Mac is off. This is meant for the iPad.
+
+1. On the iPad, open the server's address in Safari, then choose
+   **Share → Add to Home Screen**. From then on, open **Kaser Games** from the
+   Home Screen. A Home Screen app keeps its games for good. The browser itself
+   may clear stored games after a few weeks without a visit, and it stores
+   them separately from the Home Screen app.
+2. With the server running, tap a game. The first time, it downloads (a bar
+   shows progress) and then starts. The card then says **On this device**.
+   **Download all games** at the bottom fetches every game, about 2 GB.
+3. Later, with the server off, the home page says so, and the games on the
+   device still play.
+
+Details:
+
+- **Saves:** the first download of a game also copies its saves from
+  `saves/<game>/`, so you carry on where you were. After that the device keeps
+  its own saves; they are **not** copied back to the Mac (yet).
+  Removing a game (the **×** on its card) keeps its saves on the device.
+- **Updates:** if a game's files on the Mac change, its card says **Update
+  available** and the next tap downloads it again. Changes to the app itself
+  (`web/`) reach the device automatically the next time it opens the home page
+  while the server is running.
+- **On the Mac itself** (`localhost`) games aren't downloaded unless you tick
+  **Keep games on this device when I play them** at the bottom of the home
+  page; on other devices that box starts ticked.
+- Games that aren't downloaded still play straight from the server, as before.
+
 ## Your saves
 
 Everything a game writes goes into `saves/<game name>/`, using the same file
@@ -151,12 +182,17 @@ Chrome tab (web/play.html, play.js)        Web Worker (web/worker.js)
                                                     v
                               server.py: game files from games/*.app,
                                          your files in saves/
+                              or, for a game kept on the device (offline):
+                                         its files in the browser's private
+                                         file system, saves in IndexedDB
 ```
 
 | Path | What it is |
 |---|---|
 | `server.py` | Web server for your home network, HTTPS when `cert.pem` exists (Python standard library only) |
 | `web/` | Launcher (`index.html`), game page (`play.html`, `play.js`), worker, built interpreters |
+| `web/fs.js` | The two file systems a game can use: the server, or the copy on the device |
+| `web/store.js`, `download.js`, `sw.js` | Offline play: on-device storage, game downloads, and the service worker that keeps the app itself |
 | `engine/patch_k5.py`, `patch_k6.py` | Copy Everett's source from `kint_src/` and apply the small web-port patches into `engine/k5/gen/` and `engine/k6/gen/` |
 | `engine/k5/kplat.c`, `engine/k6/kplat6.c` | Browser platform layers (they replace Everett's Windows `main.c`) |
 | `engine/k5/kint_lib.js` | JavaScript side of the platform layer, shared by both interpreters |

@@ -4,12 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kaser Games</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/app-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kaser Games">
 <style>
   :root {
     --bg: #f4f1ea; --card: #fffdf8; --ink: #2b2620; --muted: #7a7064; --line: #e2dccf; --accent: #8a3b1e;
+    --ok: #3d7a3a; --note-bg: #f6ead9;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #1d1b18; --card: #282521; --ink: #ece6dc; --muted: #a39a8c; --line: #3a362f; --accent: #e08a5c; }
+    :root { --bg: #1d1b18; --card: #282521; --ink: #ece6dc; --muted: #a39a8c; --line: #3a362f; --accent: #e08a5c;
+            --ok: #8cc788; --note-bg: #332a20; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -19,17 +25,34 @@
   header p { margin: 0; color: var(--muted); }
   #filter { margin-top: 16px; width: min(320px, 100%); padding: 8px 12px; border-radius: 8px;
             border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; }
+  .notice { max-width: 1100px; margin: 12px auto 0; padding: 0 16px; }
+  .notice div { padding: 10px 14px; border-radius: 8px; background: var(--note-bg); border: 1px solid var(--line); }
+  .notice[hidden] { display: none; }
   main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 14px;
          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  a.game { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 10px 14px;
+  .card { position: relative; }
+  a.game { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 10px 14px; height: 100%;
            border-radius: 12px; background: var(--card); border: 1px solid var(--line); color: inherit;
            text-decoration: none; text-align: center; transition: transform .08s, box-shadow .08s; }
   a.game:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.12); border-color: var(--accent); }
   a.game img { width: 72px; height: 72px; object-fit: contain; }
   a.game .name { font-weight: 600; }
   a.game .note { font-size: 12px; color: var(--muted); }
-  a.game.disabled { opacity: .5; pointer-events: none; }
+  a.game .note.ok { color: var(--ok); }
+  .card.disabled a.game { opacity: .45; pointer-events: none; }
+  .bar { width: 100%; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  button.remove { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%;
+                  border: 1px solid var(--line); background: var(--card); color: var(--muted); font: 16px/1 sans-serif;
+                  cursor: pointer; display: none; }
+  .card.stored button.remove { display: block; }
+  .card.busy button.remove { display: none; }
   footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 32px; color: var(--muted); font-size: 13px; }
+  footer .settings { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; margin-bottom: 12px; }
+  footer label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  footer button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line);
+                  background: var(--card); color: var(--ink); cursor: pointer; }
+  footer button:disabled { opacity: .5; cursor: default; }
 </style>
 </head>
 <body>
@@ -38,38 +61,219 @@
   <p>Running from your own copies, in the browser. Pick a game to play.</p>
   <input id="filter" type="search" placeholder="Filter games…" autocomplete="off">
 </header>
+<div class="notice" id="offline" hidden><div>The game server isn't running, so only games stored on this device can be played.</div></div>
+<div class="notice" id="install" hidden><div>To play without your Mac, add this page to your Home Screen
+  (Share&nbsp;→ Add to Home Screen) and play from there. Games downloaded in the browser are stored separately
+  from the Home Screen app, and the browser may clear them if you don't visit for a few weeks.</div></div>
 <main id="list"></main>
-<footer>Games © Everett Kaser Software — www.kaser.com. KINT interpreter used for personal use under its license.</footer>
+<footer>
+  <div class="settings">
+    <label><input type="checkbox" id="keep"> Keep games on this device when I play them</label>
+    <button id="all">Download all games</button>
+    <span id="usage"></span>
+  </div>
+  Games © Everett Kaser Software — www.kaser.com. KINT interpreter used for personal use under its license.
+</footer>
+<script src="/web/store.js"></script>
 <script>
-  const list = document.getElementById('list');
-  const filter = document.getElementById('filter');
-  fetch('/api/games').then(r => r.json()).then(games => {
-    for (const g of games) {
-      const a = document.createElement('a');
-      a.className = 'game' + (g.engine ? '' : ' disabled');
-      a.href = '/play?g=' + encodeURIComponent(g.name);
-      a.dataset.name = g.name.toLowerCase();
-      const img = document.createElement('img');
-      img.src = '/api/icon/' + encodeURIComponent(g.name);
-      img.alt = '';
-      img.loading = 'lazy';
-      const name = document.createElement('div');
-      name.className = 'name';
-      name.textContent = g.name;
-      a.append(img, name);
-      if (!g.engine) {
-        const note = document.createElement('div');
-        note.className = 'note';
-        note.textContent = 'Not recognised';
-        a.append(note);
+'use strict';
+const list = document.getElementById('list');
+const filter = document.getElementById('filter');
+const keepBox = document.getElementById('keep');
+const allBtn = document.getElementById('all');
+const usageEl = document.getElementById('usage');
+let online = true;
+let busy = false, reloadWhenIdle = false;   // busy: a download is running
+const stored = new Map();      // name -> KStore record
+const cards = new Map();       // name -> {card, a, note, game}
+
+// ---------------------------------------------------------------- service worker
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('offline support unavailable:', err));
+  // A new version took over: reload once so the page matches it.
+  // (Not in the middle of a download, which the reload would cut off.)
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) { if (busy) reloadWhenIdle = true; else location.reload(); }
+  });
+}
+
+// --------------------------------------------------------------------- settings
+const isLocalHost = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
+function keepGames() {
+  try { const v = localStorage.getItem('keepGames'); if (v !== null) return v === '1'; } catch {}
+  return !isLocalHost;          // on the Mac itself there's no need
+}
+keepBox.checked = keepGames();
+keepBox.addEventListener('change', () => { try { localStorage.setItem('keepGames', keepBox.checked ? '1' : '0'); } catch {} });
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+document.getElementById('install').hidden = !(isIOS && !standalone);
+
+async function showUsage() {
+  const n = stored.size;
+  let text = n ? `${n} game${n === 1 ? '' : 's'} on this device` : '';
+  try {
+    const est = await navigator.storage.estimate();
+    if (n && est.usage) text += ` · ${(est.usage / 1e6).toFixed(0)} MB used`;
+  } catch {}
+  usageEl.textContent = text;
+}
+
+// ------------------------------------------------------------------------ list
+function sizeText(bytes) { return bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(bytes / 1e6)) + ' MB'; }
+
+function makeCard(g) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const a = document.createElement('a');
+  a.className = 'game';
+  a.href = '/play?g=' + encodeURIComponent(g.name);
+  const img = document.createElement('img');
+  img.src = '/api/icon/' + encodeURIComponent(g.name);
+  img.alt = '';
+  img.loading = 'lazy';
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = g.name;
+  const note = document.createElement('div');
+  note.className = 'note';
+  a.append(img, name, note);
+  const rm = document.createElement('button');
+  rm.className = 'remove';
+  rm.title = 'Remove from this device';
+  rm.setAttribute('aria-label', 'Remove ' + g.name + ' from this device');
+  rm.textContent = '×';
+  rm.onclick = () => removeGame(g.name);
+  card.append(a, rm);
+  card.dataset.name = g.name.toLowerCase();
+  a.addEventListener('click', (e) => { e.preventDefault(); openGame(g.name); });
+  list.append(card);
+  cards.set(g.name, { card, a, note, game: g });
+}
+
+function refreshCard(name) {
+  const c = cards.get(name);
+  if (!c || c.card.classList.contains('busy')) return;
+  const rec = stored.get(name);
+  c.card.classList.toggle('stored', !!rec);
+  c.note.className = 'note';
+  let playable = true;
+  if (!c.game.engine) { c.note.textContent = 'Not recognised'; playable = false; }
+  else if (rec && online && c.game.version && rec.version !== c.game.version) c.note.textContent = 'Update available';
+  else if (rec) { c.note.textContent = 'On this device'; c.note.classList.add('ok'); }
+  else if (!online) { c.note.textContent = 'Not on this device'; playable = false; }
+  else c.note.textContent = '';
+  c.card.classList.toggle('disabled', !playable);
+}
+
+async function load() {
+  try { for (const r of await KStore.allGames()) stored.set(r.name, r); } catch (err) { console.warn(err); }
+  let games = null;
+  try {
+    const res = await fetch('/api/games');
+    online = res.ok && !res.headers.get('X-Kaser-Offline');
+    if (res.ok) games = await res.json();
+  } catch { online = false; }
+  if (!games) games = [...stored.values()].map((r) => ({ name: r.name, engine: r.engine, version: r.version }))
+                                          .sort((a, b) => a.name.localeCompare(b.name));
+  document.getElementById('offline').hidden = online;
+  allBtn.hidden = !online;
+  for (const g of games) { makeCard(g); refreshCard(g.name); }
+  applyFilter();
+  showUsage();
+}
+
+// ------------------------------------------------------------------- downloads
+function download(name) {
+  const c = cards.get(name);
+  c.card.classList.add('busy');
+  c.note.className = 'note';
+  c.note.textContent = 'Downloading…';
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  const fill = document.createElement('i');
+  bar.append(fill);
+  c.a.append(bar);
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  return new Promise((resolve) => {
+    const w = new Worker('/web/download.js');
+    w.onmessage = async (e) => {
+      const m = e.data;
+      if (m.t === 'progress') {
+        fill.style.width = (100 * m.done / Math.max(1, m.total)).toFixed(1) + '%';
+        c.note.textContent = m.note || `Downloading… ${sizeText(m.done)} of ${sizeText(m.total)}`;
+        return;
       }
-      list.append(a);
+      w.terminate();
+      bar.remove();
+      c.card.classList.remove('busy');
+      if (m.t === 'done') {
+        stored.set(name, await KStore.getGame(name));
+        refreshCard(name);
+        showUsage();
+        resolve(true);
+      } else {
+        refreshCard(name);
+        c.note.textContent = 'Download failed';
+        alert(`${name} couldn't be downloaded.\n\n${m.text}`);
+        resolve(false);
+      }
+    };
+    w.onerror = (e) => { w.onmessage({ data: { t: 'error', text: e.message || 'unknown error' } }); };
+    w.postMessage({ game: name });
+  });
+}
+
+function idle() {
+  busy = false;
+  if (reloadWhenIdle) location.reload();
+}
+async function openGame(name) {
+  if (busy) return;
+  const c = cards.get(name);
+  const rec = stored.get(name);
+  const play = () => { reloadWhenIdle = false; location.href = '/play?g=' + encodeURIComponent(name); };
+  busy = true;
+  try {
+    if (rec) {
+      if (online && c.game.version && rec.version !== c.game.version) await download(name);
+      return play();      // an old copy still plays if the update failed
     }
-  });
-  filter.addEventListener('input', () => {
-    const q = filter.value.trim().toLowerCase();
-    for (const a of list.children) a.style.display = a.dataset.name.includes(q) ? '' : 'none';
-  });
+    if (!online) return;
+    if (keepBox.checked) { if (await download(name)) play(); return; }
+    play();               // straight from the server
+  } finally { idle(); }
+}
+
+async function removeGame(name) {
+  if (!confirm(`Remove ${name} from this device?\n\nYour saved progress stays on this device, ready for when you download it again.`)) return;
+  await KStore.deleteGame(name);
+  stored.delete(name);
+  refreshCard(name);
+  showUsage();
+}
+
+allBtn.addEventListener('click', async () => {
+  const todo = [...cards.values()].filter((c) => c.game.engine &&
+    (!stored.has(c.game.name) || stored.get(c.game.name).version !== c.game.version));
+  if (!todo.length) { alert('All games are already on this device.'); return; }
+  if (!confirm(`Download ${todo.length} game${todo.length === 1 ? '' : 's'} to this device?`)) return;
+  allBtn.disabled = true;
+  busy = true;
+  try {
+    for (const c of todo) { c.card.scrollIntoView({ block: 'nearest' }); if (!(await download(c.game.name))) break; }
+  } finally { allBtn.disabled = false; idle(); }
+});
+
+function applyFilter() {
+  const q = filter.value.trim().toLowerCase();
+  for (const c of list.children) c.style.display = c.dataset.name.includes(q) ? '' : 'none';
+}
+filter.addEventListener('input', applyFilter);
+
+load();
 </script>
 </body>
 </html>

@@ -3,7 +3,8 @@
 // Runs inside the game's Web Worker.  The C main loop never yields back to
 // the browser, so everything here is synchronous:
 //   * input arrives through a SharedArrayBuffer ring written by the page
-//   * files are fetched from the local Python server with synchronous XHR
+//   * files come from Module.kint.fs (web/fs.js): the local Python server,
+//     or a copy of the game kept on this device
 //   * screen updates, sounds and other UI requests are posted to the page
 //
 // Module.kint (set up in worker.js) holds the shared state.
@@ -18,28 +19,11 @@ addToLibrary({
     sleepI32: null,
     sf: null,             // system-font state
 
-    api(op, path) {
-      return `/api/g/${encodeURIComponent(Module.kint.game)}/${op}?p=${encodeURIComponent(path)}`;
-    },
-    httpGet(op, path, binary) {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', K.api(op, path), false);
-      if (binary) xhr.responseType = 'arraybuffer';
-      xhr.send();
-      if (xhr.status !== 200) return null;
-      return binary ? new Uint8Array(xhr.response) : xhr.responseText;
-    },
-    httpSend(method, op, path, body) {
-      const xhr = new XMLHttpRequest();
-      xhr.open(method, K.api(op, path), false);
-      xhr.send(body || null);
-      return xhr.status === 200;
-    },
     // Read a whole file. Game files (pgm/) never change, so they are cached.
     readFile(path) {
       const cacheable = path.startsWith('pgm/');
       if (cacheable && K.cache.has(path)) return K.cache.get(path);
-      const data = K.httpGet('file', path, true);
+      const data = Module.kint.fs.read(path);
       if (cacheable) K.cache.set(path, data);
       return data;
     },
@@ -93,14 +77,14 @@ addToLibrary({
     const app = K.str(appPtr), pgm = K.str(pgmPtr);
     let data, writable = false, created = false;
     if ((oflags & 3) === 0) {                         // read only
-      data = K.httpGet('file', app, true) || K.readFile(pgm);
+      data = Module.kint.fs.read(app) || K.readFile(pgm);
     } else {
       writable = true;
       if (oflags & 0x200) {                           // create / truncate
         data = new Uint8Array(0);
         created = true;
       } else {
-        data = K.httpGet('file', app, true);
+        data = Module.kint.fs.read(app);
         if (!data) { data = K.readFile(pgm); created = !!data; }
       }
     }
@@ -159,7 +143,7 @@ addToLibrary({
     if (!f) return;
     K.files.delete(h);
     if (f.writable && f.dirty) {
-      if (!K.httpSend('PUT', 'file', f.path, f.buf.slice(0, f.len))) {
+      if (!Module.kint.fs.write(f.path, f.buf.slice(0, f.len))) {
         console.error('KINT: failed to save', f.path);
       }
     }
@@ -167,9 +151,8 @@ addToLibrary({
   js_fstat__deps: ['$K'],
   js_fstat: function (appPtr, pgmPtr, mtimePtr, typPtr) {
     for (const p of [K.str(appPtr), K.str(pgmPtr)]) {
-      const r = K.httpGet('stat', p, false);
-      if (r) {
-        const s = JSON.parse(r);
+      const s = p && Module.kint.fs.stat(p);
+      if (s) {
         HEAPU32[mtimePtr >> 2] = s.mtime >>> 0;
         HEAPU8[typPtr] = s.dir ? 2 : 1;
         return s.dir ? 0 : s.size;
@@ -182,9 +165,7 @@ addToLibrary({
     const seen = new Set();
     K.found = [];
     [[K.str(appPtr), 1], [K.str(pgmPtr), 0]].forEach(([p, isApp]) => {
-      const r = K.httpGet('list', p, false);
-      if (!r) return;
-      for (const e of JSON.parse(r)) {
+      for (const e of Module.kint.fs.list(p)) {
         let name = e.name;
         if (stripExt) { const i = name.lastIndexOf('.'); if (i > 0) name = name.slice(0, i); }
         const key = name.toLowerCase();
@@ -203,17 +184,13 @@ addToLibrary({
     HEAPU8[appPtr] = e.app;
   },
   js_mkdir__deps: ['$K'],
-  js_mkdir: function (p) { return K.httpSend('POST', 'mkdir', K.str(p)) ? 1 : 0; },
+  js_mkdir: function (p) { return Module.kint.fs.mkdir(K.str(p)) ? 1 : 0; },
   js_rmdir__deps: ['$K'],
-  js_rmdir: function (p) { K.httpSend('POST', 'rmdir', K.str(p)); },
+  js_rmdir: function (p) { Module.kint.fs.rmdir(K.str(p)); },
   js_delete__deps: ['$K'],
-  js_delete: function (p) { K.httpSend('POST', 'delete', K.str(p)); },
+  js_delete: function (p) { Module.kint.fs.remove(K.str(p)); },
   js_rename__deps: ['$K'],
-  js_rename: function (from, to) {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', K.api('rename', K.str(from)) + '&to=' + encodeURIComponent(K.str(to)), false);
-    xhr.send();
-  },
+  js_rename: function (from, to) { Module.kint.fs.rename(K.str(from), K.str(to)); },
 
   // ---------------------------------------------------------- sound/music
   js_sound_file__deps: ['$K'],

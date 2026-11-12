@@ -1,7 +1,9 @@
 // Minimal headless-Chrome driver over the DevTools protocol (no dependencies).
 // usage: node cdp.mjs <url> <outdir> [steps.json]
-// steps: [{"wait":ms} | {"shot":"name"} | {"click":[x,y],"button":"left"} | {"key":"a"} | {"eval":"js"} | {"move":[x,y]}]
-import { spawn } from 'node:child_process';
+// steps: [{"wait":ms} | {"shot":"name"} | {"click":[x,y],"button":"left"} | {"key":"a"} | {"eval":"js"} | {"move":[x,y]}
+//         | {"sh":"shell command"} | {"goto":"url"}]
+// PROFILE=<dir> keeps the browser profile (and anything the site stored) between runs.
+import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,7 +12,7 @@ const [url, outdir, stepsFile] = process.argv.slice(2);
 const steps = stepsFile ? JSON.parse(fs.readFileSync(stepsFile, 'utf8')) : [{ wait: 4000 }, { shot: 'shot' }];
 fs.mkdirSync(outdir, { recursive: true });
 const W = Number(process.env.W || 1280), H = Number(process.env.H || 800);
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-'));
+const profile = process.env.PROFILE || fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-'));
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, `--window-size=${W},${H}`,
   '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required', 'about:blank',
@@ -49,6 +51,8 @@ async function mouse(type, x, y, button = 'left', clickCount = 1) {
 }
 for (const s of steps) {
   if (s.wait) await sleep(s.wait);
+  if (s.sh) { try { logs.push('[sh] ' + execSync(s.sh, { encoding: 'utf8' }).trim()); } catch (err) { logs.push('[sh failed] ' + err.message); } }
+  if (s.goto) await cmd('Page.navigate', { url: s.goto });
   if (s.move) await mouse('mouseMoved', ...s.move, 'none');
   if (s.click) { const b = s.button || 'left'; await mouse('mouseMoved', ...s.click, 'none'); await mouse('mousePressed', ...s.click, b); await sleep(60); await mouse('mouseReleased', ...s.click, b); }
   if (s.key) { await cmd('Input.dispatchKeyEvent', { type: 'keyDown', key: s.key, windowsVirtualKeyCode: s.vk || s.key.toUpperCase().charCodeAt(0), text: s.text ?? s.key }); await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: s.key, windowsVirtualKeyCode: s.vk || s.key.toUpperCase().charCodeAt(0) }); }
@@ -60,5 +64,5 @@ for (const s of steps) {
 }
 fs.writeFileSync(path.join(outdir, 'console.txt'), logs.join('\n'));
 console.log(logs.join('\n'));
-ws.close(); chrome.kill(); try { fs.rmSync(profile, { recursive: true, force: true }); } catch {}
+ws.close(); chrome.kill(); if (!process.env.PROFILE) { try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} }
 process.exit(0);

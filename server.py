@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import mimetypes
 import os
@@ -40,6 +41,7 @@ SOUNDBANK = Path("/System/Library/Components/CoreAudio.component/Contents/Resour
 
 mimetypes.add_type("application/wasm", ".wasm")
 mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 # ---------------------------------------------------------------- games
@@ -191,6 +193,72 @@ def icon_png(game: Game) -> Path | None:
     return out if out.exists() else None
 
 
+# ---------------------------------------------------- offline downloads
+# A browser can keep a copy of a game so it plays without this server.  The
+# game's Resources folder is sent as one "pack": an index of files followed by
+# their contents back to back.  Files the interpreter never reads are left out.
+PACK_SKIP = {"appicon.icns", "assets.car"}
+_pack_cache: dict[str, tuple[float, dict]] = {}
+
+
+def pack_index(game: Game) -> dict:
+    """Files and folders of the game, in pack order, plus a version string."""
+    key = game.name
+    try:
+        stamp = game.resources.stat().st_mtime
+    except OSError:
+        stamp = 0
+    hit = _pack_cache.get(key)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    files, dirs = [], []
+    top = game.resources.resolve()
+    for d, subdirs, names in os.walk(top, followlinks=True):
+        subdirs[:] = sorted(n for n in subdirs if not n.startswith("."))
+        rel = Path(d).relative_to(top).as_posix()
+        rel = "" if rel == "." else rel + "/"
+        if rel:
+            dirs.append([rel[:-1], int(os.stat(d).st_mtime)])
+        for n in sorted(names):
+            if n.startswith(".") or n.lower() in PACK_SKIP:
+                continue
+            st = os.stat(os.path.join(d, n))
+            files.append([rel + n, st.st_size, int(st.st_mtime)])
+    h = hashlib.sha1(json.dumps([files, dirs]).encode()).hexdigest()[:16]
+    index = {"version": h, "total": sum(f[1] for f in files), "files": files, "dirs": dirs}
+    _pack_cache[key] = (stamp, index)
+    return index
+
+
+def save_files(game: Game) -> list[dict]:
+    """The player's saved files for a game, without the SIZED_* picture caches
+    (the game rebuilds those itself)."""
+    out = []
+    root = game.saves
+    if not root.is_dir():
+        return out
+    for d, subdirs, names in os.walk(root):
+        subdirs[:] = sorted(n for n in subdirs if not n.startswith("."))
+        rel = Path(d).relative_to(root).as_posix()
+        rel = "" if rel == "." else rel + "/"
+        for n in sorted(names):
+            if n.startswith(".") or n.upper().startswith("SIZED_") or n.endswith(".tmp"):
+                continue
+            st = os.stat(os.path.join(d, n))
+            out.append({"p": "app/" + rel + n, "size": st.st_size, "mtime": int(st.st_mtime)})
+    return out
+
+
+def web_version() -> str:
+    """Changes whenever a file in web/ changes, so browsers refresh their offline copy."""
+    h = hashlib.sha1()
+    for p in sorted(WEB_DIR.rglob("*")):
+        if p.is_file():
+            st = p.stat()
+            h.update(f"{p.relative_to(WEB_DIR)}:{st.st_size}:{st.st_mtime_ns};".encode())
+    return h.hexdigest()[:16]
+
+
 # ------------------------------------------------------------ handler
 class Server(ThreadingHTTPServer):
     daemon_threads = True
@@ -270,10 +338,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(WEB_DIR / "index.html")
         if path == "/play":
             return self.send_file(WEB_DIR / "play.html")
+        if path == "/sw.js":
+            js = (WEB_DIR / "sw.js").read_text().replace("__VERSION__", web_version())
+            return self.send_bytes(js.encode(), "text/javascript")
+        if path == "/manifest.webmanifest":
+            return self.send_file(WEB_DIR / "manifest.webmanifest")
+        if path in ("/app-icon.png", "/favicon.ico"):
+            g = GAMES.get("Sherlock") or next(iter(GAMES.values()), None)
+            p = icon_png(g) if g else None
+            return self.send_file(p) if p else self.not_found()
         if path == "/api/games":
             return self.send_json([
-                {"name": g.name, "engine": g.engine} for g in GAMES.values()
+                {"name": g.name, "engine": g.engine,
+                 "version": pack_index(g)["version"] if g.engine else ""} for g in GAMES.values()
             ])
+        if path.startswith("/api/pack/"):
+            return self.pack_api(path[len("/api/pack/"):], query)
+        if path.startswith("/api/saves/"):
+            g = GAMES.get(path[len("/api/saves/"):])
+            return self.send_json(save_files(g)) if g else self.not_found()
         if path.startswith("/api/icon/"):
             g = GAMES.get(path[len("/api/icon/"):])
             p = icon_png(g) if g else None
@@ -291,6 +374,36 @@ class Handler(BaseHTTPRequestHandler):
                 return self.not_found()
             return self.send_file(WEB_DIR / rel)
         return self.not_found()
+
+    def pack_api(self, rest: str, query):
+        name, _, what = rest.rpartition("/")
+        g = GAMES.get(name)
+        if g is None or not g.engine:
+            return self.not_found()
+        index = pack_index(g)
+        if what == "index":
+            return self.send_json({"name": g.name, "engine": g.engine, **g.shown_paths(), **index})
+        if what != "data":
+            return self.not_found()
+        if (query.get("v") or [""])[0] != index["version"]:
+            return self.send_bytes(b"game changed", "text/plain", HTTPStatus.CONFLICT)
+        # Stream the files back to back without holding them all in memory.
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(index["total"]))
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        top = g.resources.resolve()
+        for rel, size, _ in index["files"]:
+            with open(top / rel, "rb") as f:
+                left = size
+                while left > 0:
+                    chunk = f.read(min(left, 1 << 20))
+                    if not chunk:      # file shrank: pad so offsets stay right
+                        chunk = b"\0" * left
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
 
     def do_PUT(self):
         url = urllib.parse.urlsplit(self.path)

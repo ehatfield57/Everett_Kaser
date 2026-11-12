@@ -47,7 +47,20 @@ function button(label, onclick, primary) {
 }
 function hideBox() { overlay.classList.remove('show'); canvas.focus(); }
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
-function backToGames() { location.href = '/'; }
+function backToGames() { savesWritten().then(() => { location.href = '/'; }); }
+
+// ------------------------------------------------------------------ saves
+// A game kept on this device saves into IndexedDB.  The worker can't wait for
+// IndexedDB while the game runs, so it hands each change to this page.
+let saveChain = Promise.resolve();
+function storeSaves(ops) {
+  saveChain = saveChain.then(() => KStore.applySaves(ops)).catch((err) => {
+    console.error('could not save:', err);
+    showBox(`<p><b>Your progress could not be saved on this device.</b></p><pre>${escapeHtml(String(err))}</pre>`,
+      [button('OK', hideBox, true)]);
+  });
+}
+const savesWritten = () => saveChain;
 
 // ------------------------------------------------------------------ sound
 let audio = null, current = null;
@@ -162,6 +175,7 @@ worker.onmessage = (e) => {
     case 'message':
       showBox(`<p>${escapeHtml(m.text)}</p>`, [button('OK', hideBox, true)]);
       break;
+    case 'saves': storeSaves(m.ops); break;
     case 'exit':
       worker.terminate();
       backToGames();
@@ -181,13 +195,23 @@ async function start() {
     return;
   }
   document.title = GAME;
-  let info = {};
-  try { info = await (await fetch('/api/info/' + encodeURIComponent(GAME))).json(); } catch {}
+  // Use the copy kept on this device if there is one, otherwise the server.
+  let info = null, local = false;
+  try { info = await KStore.getGame(GAME); local = !!info; } catch {}
+  if (!info) {
+    try { info = await (await fetch('/api/info/' + encodeURIComponent(GAME))).json(); } catch {}
+  }
+  if (!info) {
+    showBox('<p><b>This game isn\'t stored on this device, and the game server can\'t be reached.</b></p>' +
+      '<p>Start the server on your Mac, or pick a game that has been downloaded.</p>',
+      [button('Back to games', backToGames, true)]);
+    return;
+  }
   const sab = new SharedArrayBuffer((BASE + RING_CAP * EV_SIZE) * 4);
   ring = new Int32Array(sab);
   const { w, h } = viewSize();
   sizeCanvas(w, h);
-  worker.postMessage({ t: 'init', game: GAME, sab, ringCap: RING_CAP, music: true,
+  worker.postMessage({ t: 'init', game: GAME, local, sab, ringCap: RING_CAP, music: true,
                        engine: info.engine, pgmShown: info.pgm, appShown: info.app,
                        screenW: screen.width, screenH: screen.height, w, h });
   canvas.focus();
