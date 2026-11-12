@@ -92,8 +92,9 @@ If macOS asks whether Python may accept incoming network connections, choose
 A browser can keep its own copy of a game, so it keeps working when the
 server is stopped or the Mac is off. This is meant for the iPad.
 
-1. On the iPad, open the server's address in Safari, then choose
-   **Share → Add to Home Screen**. From then on, open **Kaser Games** from the
+1. On the iPad, open the server's address in Chrome or Safari, then tap the
+   **Share** button (in Chrome it's in the address bar) and choose **Add to
+   Home Screen**. From then on, open **Kaser Games** from the
    Home Screen. A Home Screen app keeps its games for good. The browser itself
    may clear stored games after a few weeks without a visit, and it stores
    them separately from the Home Screen app.
