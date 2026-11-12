@@ -206,8 +206,13 @@ function pos(e) {
 const BTN = { 0: 0, 1: 1, 2: 2 };      // DOM button -> left/middle/right
 let buttonsDown = 0;
 
+// Browsers follow a touch with imitation mouse events; the touch code below
+// handles touches itself, so ignore mouse events that arrive right after one.
+let lastTouch = -1e9;
+const fromTouch = () => performance.now() - lastTouch < 1000;
+
 canvas.addEventListener('mousedown', (e) => {
-  if (overlay.classList.contains('show')) return;
+  if (overlay.classList.contains('show') || fromTouch()) return;
   e.preventDefault();
   canvas.focus();
   audioCtx();
@@ -226,10 +231,93 @@ window.addEventListener('mouseup', (e) => {
 });
 window.addEventListener('mousemove', (e) => {
   if (e.target !== canvas && !buttonsDown) return;
+  if (fromTouch()) return;
   const [x, y] = pos(e);
   send(EV.MOUSEMOVE, x, y, mouseFlags(e));
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ------------------------------------------------------------ touch input
+// For iPad and other touch screens:
+//   tap                    -> left click
+//   touch and drag         -> left-button drag
+//   touch and hold         -> right click (a ring shows when it registers)
+//   tap with two fingers   -> right click where the first finger is
+// A mouse or trackpad on the iPad still goes through the mouse handlers above.
+const LONG_PRESS_MS = 450, MOVE_SLOP = 10;
+let touch = null;   // { id, x, y, state: 'pending' | 'drag' | 'done', timer }
+
+function rightClickAt(x, y) {
+  send(EV.MOUSEMOVE, x, y, 0);
+  send(EV.MOUSEDOWN, 2, x, y, 2);
+  send(EV.MOUSEUP, 2, x, y, 0);
+  showRing(x, y);
+}
+function showRing(x, y) {
+  const r = canvas.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'touch-ring';
+  el.style.left = (r.left + x) + 'px';
+  el.style.top = (r.top + y) + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 400);
+}
+function endTouch() {
+  if (touch) clearTimeout(touch.timer);
+  touch = null;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  e.preventDefault();
+  lastTouch = performance.now();
+  if (overlay.classList.contains('show')) return;
+  audioCtx();
+  if (touch) {
+    // A second finger while the first is still waiting: two-finger tap.
+    if (touch.state === 'pending') { rightClickAt(touch.x, touch.y); touch.state = 'done'; clearTimeout(touch.timer); }
+    return;
+  }
+  canvas.focus();
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
+  const [x, y] = pos(e);
+  touch = { id: e.pointerId, x, y, state: 'pending', timer: 0 };
+  touch.timer = setTimeout(() => {
+    if (touch && touch.state === 'pending') { rightClickAt(touch.x, touch.y); touch.state = 'done'; }
+  }, LONG_PRESS_MS);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse' || !touch || e.pointerId !== touch.id) return;
+  e.preventDefault();
+  lastTouch = performance.now();
+  const [x, y] = pos(e);
+  if (touch.state === 'pending' && Math.hypot(x - touch.x, y - touch.y) > MOVE_SLOP) {
+    // It's a drag: press the left button where the finger started.
+    clearTimeout(touch.timer);
+    touch.state = 'drag';
+    send(EV.MOUSEMOVE, touch.x, touch.y, 0);
+    send(EV.MOUSEDOWN, 0, touch.x, touch.y, 1);
+  }
+  if (touch.state === 'drag') send(EV.MOUSEMOVE, x, y, 1);
+});
+function touchUp(e) {
+  if (e.pointerType === 'mouse') return;
+  lastTouch = performance.now();
+  if (!touch || e.pointerId !== touch.id) return;
+  e.preventDefault();
+  audioCtx();           // iPad only lets sound start on a finger lift
+  const [x, y] = pos(e);
+  if (touch.state === 'pending' && e.type === 'pointerup') {
+    send(EV.MOUSEMOVE, touch.x, touch.y, 0);
+    send(EV.MOUSEDOWN, 0, touch.x, touch.y, 1);
+    send(EV.MOUSEUP, 0, touch.x, touch.y, 0);
+  } else if (touch.state === 'drag') {
+    send(EV.MOUSEUP, 0, x, y, 0);
+  }
+  endTouch();
+}
+canvas.addEventListener('pointerup', touchUp);
+canvas.addEventListener('pointercancel', touchUp);
 
 let wheelAcc = 0, hwheelAcc = 0;
 canvas.addEventListener('wheel', (e) => {

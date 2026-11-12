@@ -16,8 +16,9 @@ Start the server from this folder:
 python3 server.py --open
 ```
 
-`--open` opens the launcher in Chrome. Otherwise go to <http://localhost:8765>
-yourself. Leave the Terminal window open while you play; press **Ctrl+C** in it
+`--open` opens the launcher in Chrome. Otherwise go to <https://localhost:8765>
+yourself (or `http://` if you haven't made a certificate; see
+[Playing on other devices](#playing-on-other-devices)). Leave the Terminal window open while you play; press **Ctrl+C** in it
 to stop the server.
 
 Tips:
@@ -32,10 +33,59 @@ Tips:
 - **Keys:** the games use Windows-style shortcuts, so use **Ctrl** where a game
   says Ctrl; **Cmd** shortcuts are left to Chrome. Right-click works as usual
   (two-finger click on a trackpad).
+- **Touch screens (iPad):** tap to left-click, and drag to drag. To
+  right-click, **touch and hold** until a ring appears, or **tap with two
+  fingers**: it right-clicks where the first finger is. A mouse or trackpad
+  connected to the iPad works as usual.
 - **Not available:** printing, and pasting from the clipboard into a game.
 
-Server options: `--port 9000` to use another port, `--verbose` to log every
-file request (handy if a game misbehaves).
+Server options:
+
+- `--port 9000` uses another port.
+- `--verbose` logs every file request, which is handy if a game misbehaves.
+- `--local` accepts connections from this Mac only.
+- `--http` serves plain HTTP even if a certificate exists.
+- `--cert` and `--key` point at a certificate other than `cert.pem` and `key.pem`.
+
+## Playing on other devices
+
+The server accepts connections from any device on your home network. When it
+starts it prints the address for other devices, for example
+`https://192.168.4.45:8765/`.
+
+Browsers only let the games run on a **secure (HTTPS)** page, except at
+`localhost`. So other devices need HTTPS, which uses a certificate made by
+[mkcert](https://github.com/FiloSottile/mkcert). If `cert.pem` and `key.pem`
+are in this folder the server uses HTTPS automatically. To make them:
+
+```
+brew install mkcert
+mkcert -install          # trust mkcert's certificate authority on this Mac
+mkcert -cert-file cert.pem -key-file key.pem Edwards-MacBook.local localhost 127.0.0.1 192.168.4.45
+```
+
+Use your Mac's own name and address. Run the last command again if the Mac's
+network address changes.
+
+**Each other device must trust mkcert's authority too**, or it shows a security
+warning. The file to install is `rootCA.pem`, in the folder that
+`mkcert -CAROOT` prints:
+
+- **iPhone / iPad:** AirDrop `rootCA.pem` to the device. Install it under
+  Settings → General → VPN & Device Management. Then turn it on under Settings
+  → General → About → Certificate Trust Settings.
+- **Another Mac:** open `rootCA.pem` in Keychain Access, add it to the System
+  keychain, and set it to "Always Trust".
+- **Windows / Android:** import it as a trusted root certificate authority.
+
+Keep `rootCA-key.pem` (in the same folder) on this Mac only, and never share
+it. `key.pem` is also private; `.gitignore` keeps both `.pem` files out of git.
+
+Everyone playing shares the same saves folder, so two people playing the same
+game at once overwrite each other's progress.
+
+If macOS asks whether Python may accept incoming network connections, choose
+**Allow**.
 
 ## Your saves
 
@@ -105,7 +155,7 @@ Chrome tab (web/play.html, play.js)        Web Worker (web/worker.js)
 
 | Path | What it is |
 |---|---|
-| `server.py` | Local web server (127.0.0.1 only; Python standard library only) |
+| `server.py` | Web server for your home network, HTTPS when `cert.pem` exists (Python standard library only) |
 | `web/` | Launcher (`index.html`), game page (`play.html`, `play.js`), worker, built interpreters |
 | `engine/patch_k5.py`, `patch_k6.py` | Copy Everett's source from `kint_src/` and apply the small web-port patches into `engine/k5/gen/` and `engine/k6/gen/` |
 | `engine/k5/kplat.c`, `engine/k6/kplat6.c` | Browser platform layers (they replace Everett's Windows `main.c`) |
@@ -125,7 +175,7 @@ saves screenshots, for example:
 
 ```
 echo '[{"wait":8000},{"shot":"start"},{"eval":"document.title"}]' > /tmp/steps.json
-node tools/cdp.mjs "http://localhost:8765/play?g=Sherlock" /tmp/out /tmp/steps.json
+node tools/cdp.mjs "https://localhost:8765/play?g=Sherlock" /tmp/out /tmp/steps.json
 ```
 
 Steps can also be `{"click":[x,y]}` (add `"button":"right"` for a right-click)
@@ -135,7 +185,13 @@ can change your saves.
 ## Troubleshooting
 
 - **"This page must be served by server.py"**: open the game through
-  <http://localhost:8765>, not as a file.
+  <https://localhost:8765>, not as a file.
+- **A game won't start on another device**: use the `https://` address, and
+  install mkcert's `rootCA.pem` on that device (see
+  [Playing on other devices](#playing-on-other-devices)).
+- **Another device can't connect at all**: check the device is on the same
+  Wi-Fi, and that the macOS firewall allows Python (System Settings → Network
+  → Firewall).
 - **"Address already in use"**: the server is already running (perhaps in
   another Terminal window), or use `--port`.
 - **No sound or music**: click inside the game once. Also check the game's own

@@ -19,3 +19,6 @@ web/kint6.wasm
 .cache/
 __pycache__/
 .DS_Store
+
+# TLS certificate and private key made by mkcert
+*.pem

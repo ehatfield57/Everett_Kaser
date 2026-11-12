@@ -2,12 +2,14 @@
 """
 Local web server for playing Everett Kaser's games in Chrome.
 
-    python3 server.py            # then open http://localhost:8765
+    python3 server.py            # then open https://localhost:8765
 
 Games are read directly from the .app bundles linked in ./games.  Anything a
 game writes (settings, progress, logs) is stored under ./saves/<game name>/.
-The server only listens on 127.0.0.1, so it is not reachable from other
-computers.  It uses only the Python standard library.
+The server listens on all network interfaces, so other devices on your local
+network can play too.  If cert.pem and key.pem (made with mkcert) are next to
+this file it serves HTTPS, otherwise plain HTTP.  It uses only the Python
+standard library.
 """
 from __future__ import annotations
 
@@ -18,6 +20,8 @@ import mimetypes
 import os
 import plistlib
 import posixpath
+import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -192,6 +196,26 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
     verbose = False
 
+    def handle_error(self, request, client_address):
+        # A device that doesn't trust the certificate, or a dropped connection,
+        # is routine; report it in one line instead of a traceback.
+        err = sys.exc_info()[1]
+        if isinstance(err, (ssl.SSLError, ConnectionError, TimeoutError)):
+            if self.verbose:
+                print(f"{client_address[0]}: {err}", file=sys.stderr)
+            return
+        super().handle_error(request, client_address)
+
+
+def lan_address() -> str | None:
+    """This Mac's address on the local network (no packets are sent)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
 
 class Handler(BaseHTTPRequestHandler):
     server: Server
@@ -363,16 +387,35 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--open", action="store_true", help="open the launcher in Chrome")
     ap.add_argument("--verbose", action="store_true", help="log every request")
+    ap.add_argument("--cert", default=str(ROOT / "cert.pem"), help="TLS certificate (default: cert.pem)")
+    ap.add_argument("--key", default=str(ROOT / "key.pem"), help="TLS private key (default: key.pem)")
+    ap.add_argument("--http", action="store_true", help="serve plain HTTP even if a certificate exists")
+    ap.add_argument("--local", action="store_true", help="only accept connections from this Mac")
     args = ap.parse_args()
 
     if not (WEB_DIR / "kint5.wasm").exists():
         sys.exit("web/kint5.wasm is missing - build it first with: engine/build.sh")
     SAVES_DIR.mkdir(exist_ok=True)
 
-    httpd = Server(("127.0.0.1", args.port), Handler)
+    use_tls = not args.http and Path(args.cert).exists() and Path(args.key).exists()
+    if not args.http and not use_tls:
+        print(f"No certificate at {args.cert} / {args.key}; serving plain HTTP.")
+
+    httpd = Server(("127.0.0.1" if args.local else "0.0.0.0", args.port), Handler)
     httpd.verbose = args.verbose
-    url = f"http://localhost:{args.port}/"
+    if use_tls:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(args.cert, args.key)
+        # Handshake in each request's own thread, so one slow or stuck device
+        # can't hold up everyone else.
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True, do_handshake_on_connect=False)
+
+    scheme = "https" if use_tls else "http"
+    url = f"{scheme}://localhost:{args.port}/"
     print(f"Found {len(GAMES)} games.  Serving on {url}  (Ctrl+C to stop)")
+    lan = None if args.local else lan_address()
+    if lan:
+        print(f"Other devices on your network: {scheme}://{lan}:{args.port}/")
     if args.open:
         subprocess.run(["open", "-a", "Google Chrome", url], check=False)
     try:
