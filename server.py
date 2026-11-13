@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import html
 import json
 import mimetypes
 import os
@@ -263,6 +264,48 @@ def web_version() -> str:
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     verbose = False
+    ssl_ctx: ssl.SSLContext | None = None   # set when serving HTTPS
+
+    def finish_request(self, request, client_address):
+        # Runs in the connection's own thread, so one slow or stuck device
+        # can't hold up everyone else during the TLS handshake.
+        if self.ssl_ctx is None:
+            return super().finish_request(request, client_address)
+        request.settimeout(30)
+        first = request.recv(1, socket.MSG_PEEK)
+        if not first:
+            return
+        if first != b"\x16":        # not a TLS handshake: an http:// address
+            return self.redirect_to_https(request, client_address)
+        tls = self.ssl_ctx.wrap_socket(request, server_side=True)
+        try:
+            tls.settimeout(None)
+            super().finish_request(tls, client_address)
+        finally:
+            self.shutdown_request(tls)
+
+    def redirect_to_https(self, sock, client_address):
+        """Answer a plain-HTTP request with a redirect to the same page over HTTPS."""
+        data = b""
+        while b"\r\n\r\n" not in data and len(data) < 16384:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        lines = data.decode("latin-1").split("\r\n")
+        parts = lines[0].split(" ")
+        path = parts[1] if len(parts) > 1 and parts[1].startswith("/") else "/"
+        host = next((ln.split(":", 1)[1].strip() for ln in lines[1:]
+                     if ln.lower().startswith("host:")), "")
+        if not host:
+            host = f"localhost:{self.server_address[1]}"
+        location = f"https://{host}{path}"
+        if self.verbose:
+            print(f"{client_address[0]}: plain http, redirecting to {location}", file=sys.stderr)
+        body = f'<a href="{html.escape(location)}">{html.escape(location)}</a>\n'.encode("latin-1", "replace")
+        sock.sendall(f"HTTP/1.1 301 Moved Permanently\r\nLocation: {location}\r\n"
+                     f"Content-Type: text/html\r\nContent-Length: {len(body)}\r\n"
+                     "Connection: close\r\n\r\n".encode("latin-1", "replace") + body)
 
     def handle_error(self, request, client_address):
         # A device that doesn't trust the certificate, or a dropped connection,
@@ -549,9 +592,7 @@ def main():
     if use_tls:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(args.cert, args.key)
-        # Handshake in each request's own thread, so one slow or stuck device
-        # can't hold up everyone else.
-        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True, do_handshake_on_connect=False)
+        httpd.ssl_ctx = ctx
 
     scheme = "https" if use_tls else "http"
     url = f"{scheme}://localhost:{args.port}/"

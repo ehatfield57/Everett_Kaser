@@ -47,7 +47,19 @@ function button(label, onclick, primary) {
 }
 function hideBox() { overlay.classList.remove('show'); canvas.focus(); }
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
-function backToGames() { savesWritten().then(() => { location.href = '/'; }); }
+// In its own window (opened by the launcher) the game closes; otherwise it
+// goes back to the launcher in this window.
+function backToGames() {
+  savesWritten().then(() => {
+    let opener = null;
+    try { opener = window.opener && !window.opener.closed ? window.opener : null; } catch {}
+    if (opener) {
+      try { opener.focus(); } catch {}
+      window.close();
+    }
+    if (!window.closed) location.href = '/';
+  });
+}
 
 // ------------------------------------------------------------------ saves
 // A game kept on this device saves into IndexedDB.  The worker can't wait for

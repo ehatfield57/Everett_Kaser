@@ -24,8 +24,12 @@ to stop the server.
 Tips:
 
 - **Quit with the game's own Exit menu.** That's when most games save your
-  settings, statistics and unfinished puzzle. Closing the tab may lose them.
-  Exit takes you back to the game list.
+  settings, statistics and unfinished puzzle. Closing the window may lose them.
+  Exit closes the game's window.
+- **Each game opens in its own window**, so the game list stays open. Clicking
+  a game that's already open brings its window to the front. (In the iPad Home
+  Screen app, games open in place of the list instead.) If Chrome blocks the
+  new window, the game opens in place of the list.
 - **Sound and music start after your first click** in a game, because Chrome
   doesn't allow a page to play sound before you've interacted with it.
 - **Window size:** the game fills the browser tab and redraws when you resize
@@ -242,6 +246,13 @@ can change your saves.
 - **A game won't start on another device**: use the `https://` address, and
   install mkcert's `rootCA.pem` on that device (see
   [Playing on other devices](#playing-on-other-devices)).
+- **The launcher says it can't reach the game server, but the server is
+  running** (or the page loads forever): the device doesn't trust the
+  certificate. The saved copy of the launcher hides the browser's warning, so
+  this is the only sign. Install `rootCA.pem` on the device and turn on full
+  trust (see [Playing on other devices](#playing-on-other-devices)).
+- **Typing the address without `https://`** is fine: the server forwards
+  plain `http://` visits to `https://`.
 - **Another device can't connect at all**: check the device is on the same
   Wi-Fi, and that the macOS firewall allows Python (System Settings → Network
   → Firewall).
