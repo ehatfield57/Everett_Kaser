@@ -43,9 +43,8 @@
   .bar { width: 100%; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
   button.remove { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%;
-                  border: 1px solid var(--accent); background: var(--card); color: var(--accent);
+                  border: 0; background: transparent; color: var(--accent);
                   font: 600 18px/1 sans-serif; cursor: pointer; display: none; padding: 0; }
-  button.remove:hover { background: var(--accent); color: var(--card); }
   @media (pointer: coarse) { button.remove { width: 36px; height: 36px; top: 4px; right: 4px; font-size: 20px; } }
   .card.stored button.remove { display: block; }
   .card.busy button.remove { display: none; }
