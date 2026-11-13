@@ -267,9 +267,40 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 //   touch and drag         -> left-button drag
 //   touch and hold         -> right click (a ring shows when it registers)
 //   tap with two fingers   -> right click where the first finger is
+// With "swipe = arrow keys" switched on (the ✥ button), a drag becomes arrow
+// keys instead: a flick is one press, every SWIPE_STEP of travel is another,
+// and holding the finger still after a swipe repeats the key.
 // A mouse or trackpad on the iPad still goes through the mouse handlers above.
 const LONG_PRESS_MS = 450, MOVE_SLOP = 10;
-let touch = null;   // { id, x, y, state: 'pending' | 'drag' | 'done', timer }
+const SWIPE_FIRST = 24, SWIPE_STEP = 40, REPEAT_DELAY_MS = 500, REPEAT_MS = 150;
+const VK = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, BACK: 8, ENTER: 13, SPACE: 32 };
+let touch = null;   // { id, x, y, state: 'pending' | 'drag' | 'swipe' | 'done', timer, ax, ay, vk, pressed }
+let swipeMode = false;
+
+// One key press.  The release comes a moment later so a game that polls the
+// key state (KINT 6 does) still sees the key down.
+function tapKey(vk) {
+  send(EV.KEYDOWN, vk, 0);
+  setTimeout(() => send(EV.KEYUP, vk, 0), 60);
+}
+function swipeDir(dx, dy, min) {
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < min) return 0;
+  return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? VK.RIGHT : VK.LEFT) : (dy > 0 ? VK.DOWN : VK.UP);
+}
+function swipePress(vk, x, y) {
+  tapKey(vk);
+  touch.vk = vk; touch.ax = x; touch.ay = y; touch.pressed = true;
+  armRepeat();
+}
+function armRepeat() {
+  clearTimeout(touch.timer);
+  const t = touch;
+  t.timer = setTimeout(function rep() {
+    if (touch !== t) return;
+    tapKey(t.vk);
+    t.timer = setTimeout(rep, REPEAT_MS);
+  }, REPEAT_DELAY_MS);
+}
 
 function rightClickAt(x, y) {
   send(EV.MOUSEMOVE, x, y, 0);
@@ -302,7 +333,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (touch.state === 'pending') { rightClickAt(touch.x, touch.y); touch.state = 'done'; clearTimeout(touch.timer); }
     return;
   }
-  canvas.focus();
+  if (document.activeElement !== kbd) canvas.focus();   // don't close the on-screen keyboard
   try { canvas.setPointerCapture(e.pointerId); } catch {}
   const [x, y] = pos(e);
   touch = { id: e.pointerId, x, y, state: 'pending', timer: 0 };
@@ -315,6 +346,18 @@ canvas.addEventListener('pointermove', (e) => {
   e.preventDefault();
   lastTouch = performance.now();
   const [x, y] = pos(e);
+  if (touch.state === 'pending' && swipeMode && Math.hypot(x - touch.x, y - touch.y) > MOVE_SLOP) {
+    clearTimeout(touch.timer);
+    touch.state = 'swipe';
+    touch.ax = touch.x; touch.ay = touch.y; touch.pressed = false;
+  }
+  if (touch.state === 'swipe') {
+    const dx = x - touch.ax, dy = y - touch.ay;
+    const vk = swipeDir(dx, dy, touch.pressed ? SWIPE_STEP : SWIPE_FIRST);
+    if (vk) swipePress(vk, x, y);
+    else if (touch.pressed && Math.hypot(dx, dy) > MOVE_SLOP) armRepeat();   // still moving: not a hold yet
+    return;
+  }
   if (touch.state === 'pending' && Math.hypot(x - touch.x, y - touch.y) > MOVE_SLOP) {
     // It's a drag: press the left button where the finger started.
     clearTimeout(touch.timer);
@@ -337,6 +380,9 @@ function touchUp(e) {
     send(EV.MOUSEUP, 0, touch.x, touch.y, 0);
   } else if (touch.state === 'drag') {
     send(EV.MOUSEUP, 0, x, y, 0);
+  } else if (touch.state === 'swipe' && !touch.pressed && e.type === 'pointerup') {
+    const vk = swipeDir(x - touch.ax, y - touch.ay, MOVE_SLOP);   // a short, fast flick
+    if (vk) tapKey(vk);
   }
   endTouch();
 }
@@ -370,6 +416,8 @@ function keyAllowedToBrowser(e) {
 window.addEventListener('keydown', (e) => {
   if (overlay.classList.contains('show')) return;
   if (keyAllowedToBrowser(e)) return;
+  // The iPad's on-screen keyboard often sends no key code; its 'beforeinput' below handles those.
+  if (e.target === kbd && (!e.keyCode || e.keyCode === 229 || e.key === 'Unidentified')) return;
   e.preventDefault();
   const vk = e.keyCode;
   if (!vk || vk === 91 || vk === 93) return;
@@ -383,6 +431,68 @@ window.addEventListener('keyup', (e) => {
   e.preventDefault();
   send(EV.KEYUP, vk, e.altKey || vk === 18 ? 1 : 0);
 });
+
+// ------------------------------------------------- touch-screen helpers
+// The ⌨ button focuses a hidden text field so the iPad shows its keyboard;
+// what's typed is passed to the game as key presses.  The field keeps one
+// space in it so Delete always has something to act on.
+const kbd = document.getElementById('kbd');
+const kbdBtn = document.getElementById('kbdBtn');
+const swipeBtn = document.getElementById('swipeBtn');
+const hintEl = document.getElementById('hint');
+const SWIPE_PREF = 'kaser.swipe.' + GAME;
+
+let hintTimer = 0;
+function hint(text) {
+  hintEl.textContent = text;
+  hintEl.classList.add('show');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => hintEl.classList.remove('show'), 1800);
+}
+function resetKbd() { kbd.value = ' '; try { kbd.setSelectionRange(1, 1); } catch {} }
+function typeChar(ch) {
+  const c = ch.toUpperCase();
+  const vk = /^[A-Z0-9]$/.test(c) ? c.charCodeAt(0) : ch === ' ' ? VK.SPACE : 0;
+  if (vk) send(EV.KEYDOWN, vk, 0);
+  send(EV.CHAR, ch.codePointAt(0));
+  if (vk) send(EV.KEYUP, vk, 0);
+}
+
+kbd.addEventListener('beforeinput', (e) => {
+  e.preventDefault();
+  if (overlay.classList.contains('show')) return;
+  const t = e.inputType;
+  if (t === 'insertText' || t === 'insertReplacementText' || t === 'insertFromPaste') {
+    for (const ch of e.data || '') typeChar(ch);
+  } else if (t === 'deleteContentBackward' || t === 'deleteWordBackward') {
+    tapKey(VK.BACK);
+  } else if (t === 'insertLineBreak' || t === 'insertParagraph') {
+    tapKey(VK.ENTER);
+  }
+  resetKbd();
+});
+kbd.addEventListener('input', resetKbd);          // in case an edit slipped through
+kbd.addEventListener('focus', () => { kbdBtn.classList.add('on'); resetKbd(); });
+kbd.addEventListener('blur', () => kbdBtn.classList.remove('on'));
+kbdBtn.addEventListener('pointerdown', (e) => e.preventDefault());   // keep focus where it is
+kbdBtn.addEventListener('click', () => {
+  if (document.activeElement === kbd) { kbd.blur(); canvas.focus(); }
+  else { resetKbd(); kbd.focus(); }
+});
+
+function setSwipe(on, announce) {
+  swipeMode = on;
+  swipeBtn.classList.toggle('on', on);
+  try { localStorage.setItem(SWIPE_PREF, on ? '1' : '0'); } catch {}
+  if (announce) hint(on ? 'Swipe = arrow keys (drag is off)' : 'Swipe = drag (normal)');
+}
+swipeBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+swipeBtn.addEventListener('click', () => setSwipe(!swipeMode, true));
+try { swipeMode = localStorage.getItem(SWIPE_PREF) === '1'; } catch {}
+setSwipe(swipeMode, false);
+
+// Only touch screens get the buttons; a Mac has a real keyboard.
+if (navigator.maxTouchPoints > 0) document.getElementById('touchbar').classList.add('show');
 
 // ---------------------------------------------------------- window events
 let resizeTimer = 0;

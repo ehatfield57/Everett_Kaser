@@ -36,7 +36,16 @@ Tips:
 - **Touch screens (iPad):** tap to left-click, and drag to drag. To
   right-click, **touch and hold** until a ring appears, or **tap with two
   fingers**: it right-clicks where the first finger is. A mouse or trackpad
-  connected to the iPad works as usual.
+  connected to the iPad works as usual. Two buttons sit in the bottom-right
+  corner on touch screens:
+  - **⌨** opens the iPad keyboard, for typing your name and other text into a
+    game. Tap it again (or the keyboard's hide key) to close it.
+  - **✥** makes swipes act as **arrow keys**, for games where you move a
+    character with the keys. A flick is one press, a longer swipe presses
+    once for about every half inch your finger travels, and holding your
+    finger still after a swipe repeats the key. Taps and touch-and-hold
+    still click; dragging is off while it's on. Each game remembers the
+    setting.
 - **Not available:** printing, and pasting from the clipboard into a game.
 
 Server options:
