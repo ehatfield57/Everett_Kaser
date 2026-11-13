@@ -70,11 +70,18 @@ are in this folder the server uses HTTPS automatically. To make them:
 ```
 brew install mkcert
 mkcert -install          # trust mkcert's certificate authority on this Mac
-mkcert -cert-file cert.pem -key-file key.pem Edwards-MacBook.local localhost 127.0.0.1 192.168.4.45
+mkcert -cert-file cert.pem -key-file key.pem Edwards-MacBook.local localhost 127.0.0.1 192.168.4.48 192.168.4.45
 ```
 
 Use your Mac's own name and address. Run the last command again if the Mac's
 network address changes.
+
+A device keeps its downloaded games and its progress separately for each
+address, so stick to one address on each device. The Mac's name
+(`https://Edwards-MacBook.local:8765`) is the safest choice because it stays
+the same when the IP address changes. If you do move to a new address, open
+the old one once more and use **Remove all games from this device** to free
+the space (the page opens even when the server isn't at that address).
 
 **Each other device must trust mkcert's authority too**, or it shows a security
 warning. The file to install is `rootCA.pem`, in the folder that

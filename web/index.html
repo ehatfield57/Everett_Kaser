@@ -72,6 +72,7 @@
   <div class="settings">
     <label><input type="checkbox" id="keep"> Keep games on this device when I play them</label>
     <button id="all">Download all games</button>
+    <button id="removeAll" hidden>Remove all games from this device</button>
     <span id="usage"></span>
   </div>
   Games © Everett Kaser Software — www.kaser.com. KINT interpreter used for personal use under its license.
@@ -84,6 +85,7 @@ const filter = document.getElementById('filter');
 const keepBox = document.getElementById('keep');
 const allBtn = document.getElementById('all');
 const usageEl = document.getElementById('usage');
+const removeAllBtn = document.getElementById('removeAll');
 let online = true;
 let busy = false, reloadWhenIdle = false;   // busy: a download is running
 const stored = new Map();      // name -> KStore record
@@ -115,6 +117,7 @@ document.getElementById('install').hidden = !(isIOS && !standalone);
 
 async function showUsage() {
   const n = stored.size;
+  removeAllBtn.hidden = !n;
   let text = n ? `${n} game${n === 1 ? '' : 's'} on this device` : '';
   try {
     const est = await navigator.storage.estimate();
@@ -267,6 +270,26 @@ allBtn.addEventListener('click', async () => {
   try {
     for (const c of todo) { c.card.scrollIntoView({ block: 'nearest' }); if (!(await download(c.game.name))) break; }
   } finally { allBtn.disabled = false; idle(); }
+});
+
+removeAllBtn.addEventListener('click', async () => {
+  if (busy || !stored.size) return;
+  const n = stored.size;
+  if (!confirm(`Remove all ${n} game${n === 1 ? '' : 's'} from this device?\n\n` +
+               'Your saved progress stays on this device, ready for when you download them again.')) return;
+  busy = true;
+  removeAllBtn.disabled = allBtn.disabled = true;
+  try {
+    for (const name of [...stored.keys()]) {
+      try { await KStore.deleteGame(name); } catch (err) { console.warn('could not remove', name, err); continue; }
+      stored.delete(name);
+      refreshCard(name);
+    }
+  } finally {
+    removeAllBtn.disabled = allBtn.disabled = false;
+    showUsage();
+    idle();
+  }
 });
 
 function applyFilter() {
