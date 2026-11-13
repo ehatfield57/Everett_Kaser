@@ -275,6 +275,36 @@ class Server(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+class DualStackServer(Server):
+    """Listens on IPv6 and IPv4 at once.  The Mac's Bonjour name (<name>.local)
+    resolves to IPv6 addresses too, and some devices try those first."""
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        super().server_bind()
+
+
+def make_server(local: bool, port: int) -> Server:
+    if local:
+        return Server(("127.0.0.1", port), Handler)
+    try:
+        return DualStackServer(("::", port), Handler)
+    except OSError:
+        return Server(("0.0.0.0", port), Handler)   # no IPv6 on this Mac
+
+
+def bonjour_name() -> str | None:
+    """This Mac's network name, e.g. Edwards-MacBook.local, which stays the
+    same when the IP address changes."""
+    try:
+        name = subprocess.run(["scutil", "--get", "LocalHostName"], capture_output=True,
+                              text=True, timeout=3).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return f"{name}.local" if name else None
+
+
 def lan_address() -> str | None:
     """This Mac's address on the local network (no packets are sent)."""
     try:
@@ -514,7 +544,7 @@ def main():
     if not args.http and not use_tls:
         print(f"No certificate at {args.cert} / {args.key}; serving plain HTTP.")
 
-    httpd = Server(("127.0.0.1" if args.local else "0.0.0.0", args.port), Handler)
+    httpd = make_server(args.local, args.port)
     httpd.verbose = args.verbose
     if use_tls:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -529,6 +559,9 @@ def main():
     lan = None if args.local else lan_address()
     if lan:
         print(f"Other devices on your network: {scheme}://{lan}:{args.port}/")
+        name = bonjour_name()
+        if name:
+            print(f"   or, by name (stays the same if the address changes): {scheme}://{name}:{args.port}/")
     if args.open:
         subprocess.run(["open", "-a", "Google Chrome", url], check=False)
     try:
