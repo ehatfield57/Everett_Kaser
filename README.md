@@ -78,7 +78,8 @@ mkcert -cert-file cert.pem -key-file key.pem Edwards-MacBook.local localhost 127
 ```
 
 Use your Mac's own name and address. Run the last command again if the Mac's
-network address changes.
+network address changes. Devices that already trust mkcert's authority (below)
+accept the new certificate with nothing more to do.
 
 A device keeps its downloaded games and its progress separately for each
 address, so stick to one address on each device. The Mac's name
@@ -91,9 +92,15 @@ the space (the page opens even when the server isn't at that address).
 warning. The file to install is `rootCA.pem`, in the folder that
 `mkcert -CAROOT` prints:
 
-- **iPhone / iPad:** AirDrop `rootCA.pem` to the device. Install it under
-  Settings → General → VPN & Device Management. Then turn it on under Settings
-  → General → About → Certificate Trust Settings.
+- **iPhone / iPad:**
+  1. On the Mac, `open "$(mkcert -CAROOT)"`, right-click `rootCA.pem` and
+     choose Share → AirDrop, then pick the device. (Not `rootCA-key.pem`.)
+  2. On the device, open Settings and tap **Profile Downloaded** near the top
+     (or General → VPN & Device Management), then **Install**.
+  3. Turn on full trust: Settings → General → About → **Certificate Trust
+     Settings** → switch on the mkcert entry. Without this step the profile
+     does nothing.
+  4. Close and reopen the browser. This covers both Chrome and Safari.
 - **Another Mac:** open `rootCA.pem` in Keychain Access, add it to the System
   keychain, and set it to "Always Trust".
 - **Windows / Android:** import it as a trusted root certificate authority.
