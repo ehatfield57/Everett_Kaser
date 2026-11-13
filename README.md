@@ -44,8 +44,8 @@ Tips:
     character with the keys. A flick is one press, a longer swipe presses
     once for about every half inch your finger travels, and holding your
     finger still after a swipe repeats the key. Taps and touch-and-hold
-    still click; dragging is off while it's on. Each game remembers the
-    setting.
+    still click; dragging is off while it's on. It starts on for Hero's
+    Hearts, Hero's Friends and Hero Defiant; each game remembers your choice.
 - **Not available:** printing, and pasting from the clipboard into a game.
 
 Server options:

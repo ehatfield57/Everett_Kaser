@@ -483,12 +483,15 @@ kbdBtn.addEventListener('click', () => {
 function setSwipe(on, announce) {
   swipeMode = on;
   swipeBtn.classList.toggle('on', on);
-  try { localStorage.setItem(SWIPE_PREF, on ? '1' : '0'); } catch {}
+  if (announce) try { localStorage.setItem(SWIPE_PREF, on ? '1' : '0'); } catch {}
   if (announce) hint(on ? 'Swipe = arrow keys (drag is off)' : 'Swipe = drag (normal)');
 }
 swipeBtn.addEventListener('pointerdown', (e) => e.preventDefault());
 swipeBtn.addEventListener('click', () => setSwipe(!swipeMode, true));
-try { swipeMode = localStorage.getItem(SWIPE_PREF) === '1'; } catch {}
+// Games where the keys move a hero start with swipes as arrow keys; the ✥ button changes it.
+const ARROW_GAMES = ["Hero's Hearts", "Hero's Friends", 'Hero Defiant'];
+swipeMode = ARROW_GAMES.includes(GAME);
+try { const v = localStorage.getItem(SWIPE_PREF); if (v !== null) swipeMode = v === '1'; } catch {}
 setSwipe(swipeMode, false);
 
 // Only touch screens get the buttons; a Mac has a real keyboard.
