@@ -8,11 +8,13 @@ browser (double-click it in Finder).
 
 A Kaser game is a program plus an interpreter
 ---------------------------------------------
-Everett doesn't write each game in C. He writes it in his own language,
-which compiles to a file called MAIN.KE. A separate program, the KINT
-interpreter, reads MAIN.KE and carries out its instructions. Each Mac app
-is that interpreter bundled with the game's MAIN.KE and its pictures,
-sounds, music, fonts and puzzles (inside Contents/Resources).
+Everett writes each game in C, but it isn't compiled for Windows or the
+Mac. He ported a C compiler to produce instructions for his own virtual
+CPU, and his assembler and linker turn those into a file called MAIN.KE.
+A separate program, the KINT interpreter, reads MAIN.KE and carries out
+its instructions. Each Mac app is that interpreter bundled with the
+game's MAIN.KE and its pictures, sounds, music, fonts and puzzles
+(inside Contents/Resources).
 
 37 games use KINT 5 (MAIN.KE starts with "KASMB"). Crocotile, Lair of
 Moriarty and Occam's Quilt use KINT 6, a newer interpreter.
@@ -92,9 +94,10 @@ Three things let a downloaded game run with the Mac switched off:
     over. Saves made on the device stay there (sending them back to the Mac
     hasn't been built yet).
 
-Each address keeps its own storage. https://192.168.4.48:8765 and
-https://192.168.4.45:8765 count as different sites, which is why changing
-the Mac's IP address means downloading again.
+Each address keeps its own storage. https://192.168.1.20:8765 and
+https://192.168.1.21:8765 (example addresses) count as different sites,
+which is why changing the Mac's IP address means downloading again. It's
+worth asking your router to always give the Mac the same address.
 
 
 HTTPS and the certificate
@@ -105,11 +108,12 @@ addresses. Each device must trust that root: on the iPad, by installing
 rootCA.pem and turning on full trust under Settings > General > About >
 Certificate Trust Settings.
 
-That's what caused the hang on the iPad: it had never fully trusted the
-root, so it refused the new certificate made for the new IP address. The
-browser's warning was hidden because the launcher was running from the
-service worker's copy. Now that the root is trusted, any future
-certificate from the same mkcert is accepted automatically.
+Skipping the full-trust step causes a confusing symptom. The iPad
+refuses the server's certificate, but the launcher runs from the service
+worker's copy, so no warning appears. The page just loads forever, then
+says it can't reach the game server. Once the root is trusted, every
+certificate from the same mkcert is accepted automatically, including new
+ones made when the Mac's address changes.
 
 If you type http:// instead of https://, the server notices (an HTTPS
 connection always starts with the byte 0x16) and redirects you to the
@@ -136,5 +140,5 @@ Building and testing
 Git tracks only the port's own files. Your games, saves, certificates,
 Everett's KINT source and the built interpreters stay out of it.
 
-Everett's license allows private use only. Keep all of this on your own
-machines.
+Everett's KINT license allows private use only. The port is for playing
+games you own, on your own machines; the interpreter is Everett's work.
