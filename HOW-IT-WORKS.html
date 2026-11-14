@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How Kaser Web Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column (~68ch) with a contents strip on top; the
+   architecture diagram breaks out wider. Palette borrows the teal desktop and
+   mauve dialog of Kaser's Windows-era games. */
+:root {
+  --bg: #f6f7f6;
+  --surface: #ffffff;
+  --fg: #1d2626;
+  --muted: #566362;
+  --line: #d3dbda;
+  --teal: #0b6d6d;
+  --teal-soft: #dcefee;
+  --mauve: #8e6c72;
+  --mauve-soft: #f1e8e9;
+  --code-bg: #eceff0;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --body: "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111818; --surface: #182222; --fg: #e3eae9; --muted: #9db0ae; --line: #2d3b3b;
+    --teal: #5cc4c0; --teal-soft: #173634; --mauve: #d5a9b0; --mauve-soft: #33262a; --code-bg: #1f2b2b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111818; --surface: #182222; --fg: #e3eae9; --muted: #9db0ae; --line: #2d3b3b;
+  --teal: #5cc4c0; --teal-soft: #173634; --mauve: #d5a9b0; --mauve-soft: #33262a; --code-bg: #1f2b2b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--fg);
+  font: 17px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+.wrap { max-width: 44rem; margin: 0 auto; }
+.wide { max-width: 60rem; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; }
+h1 { font-size: clamp(2rem, 5vw, 2.9rem); margin: 0 0 .4em; letter-spacing: -.01em; }
+h2 { font-size: 1.6rem; margin: 2.6em 0 .5em; padding-top: .8em; border-top: 2px solid var(--line); }
+h3 { font-size: 1.15rem; margin: 1.8em 0 .3em; color: var(--teal); }
+p, li { max-width: 68ch; }
+a { color: var(--teal); }
+a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: .08em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+.eyebrow { font: 600 .78rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mauve); margin: 0 0 1rem; }
+.lede { font-size: 1.2rem; color: var(--muted); }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 1.6rem 0 0; padding: 0; list-style: none; }
+.toc a { display: block; text-decoration: none; font-size: .9rem; padding: 5px 11px; border: 1px solid var(--line); border-radius: 99px; color: var(--fg); background: var(--surface); }
+.toc a:hover { border-color: var(--teal); color: var(--teal); }
+figure { margin: 2rem 0; }
+.diagram { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.diagram svg { display: block; min-width: 760px; width: 100%; height: auto; }
+figcaption { font-size: .9rem; color: var(--muted); margin-top: .6rem; }
+svg text { font-family: var(--body); fill: var(--fg); }
+svg .t-title { font: 700 15px var(--display); fill: var(--fg); }
+svg .t-small { font-size: 12px; fill: var(--muted); }
+svg .t-mono { font: 11.5px var(--mono); fill: var(--muted); }
+svg .t-region { font: 600 12px var(--mono); letter-spacing: .1em; fill: var(--mauve); }
+svg .region { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 5; }
+svg .box { fill: var(--surface); stroke: var(--teal); stroke-width: 1.5; }
+svg .box-alt { fill: var(--mauve-soft); stroke: var(--mauve); stroke-width: 1.5; }
+svg .strip { fill: var(--teal-soft); stroke: var(--teal); stroke-width: 1.5; }
+svg .arrow { stroke: var(--teal); stroke-width: 1.6; fill: none; }
+svg .arrow-m { stroke: var(--mauve); stroke-width: 1.6; fill: none; }
+svg .head { fill: var(--teal); }
+svg .head-m { fill: var(--mauve); }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 1.2rem 0; display: grid; gap: 12px; }
+.steps li { counter-increment: s; position: relative; padding: 12px 14px 12px 52px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.steps li::before { content: counter(s); position: absolute; left: 14px; top: 12px; width: 26px; height: 26px; border-radius: 50%; background: var(--teal); color: var(--bg); font: 700 .85rem/26px var(--display); text-align: center; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 14px; margin: 1.2rem 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+.card h4 { margin: 0 0 .3em; font: 700 1rem var(--display); }
+.card p { margin: 0; font-size: .95rem; }
+.card .path { font: .8rem var(--mono); color: var(--mauve); display: block; margin-bottom: .4em; overflow-wrap: anywhere; }
+.table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .93rem; min-width: 30rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 .75rem var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+td code { white-space: nowrap; }
+.note { background: var(--mauve-soft); border-left: 3px solid var(--mauve); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 1.4rem 0; }
+.note p { margin: 0; }
+.kbd { font: 600 .85em var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 .35em; background: var(--surface); }
+@media (max-width: 480px) { body { font-size: 16px; } h2 { font-size: 1.4rem; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+
+</head>
+<body>
+<header class="wrap">
+  <p class="eyebrow">Everett Kaser games · browser port</p>
+  <h1>How Kaser Web works</h1>
+  <p class="lede">Your Kaser games run in Chrome and Safari, on the Mac and the iPad, using Everett's own interpreter. This page follows each piece, from the game file on your disk to the pixels and sounds in the browser.</p>
+  <ul class="toc">
+    <li><a href="#big-picture">The big picture</a></li>
+    <li><a href="#games">What a Kaser game is</a></li>
+    <li><a href="#interpreter">The interpreter in the browser</a></li>
+    <li><a href="#click">From click to play</a></li>
+    <li><a href="#screen-sound">Screen, sound, music</a></li>
+    <li><a href="#files">Files and saves</a></li>
+    <li><a href="#server">The server</a></li>
+    <li><a href="#offline">Playing offline</a></li>
+    <li><a href="#network">Network and HTTPS</a></li>
+    <li><a href="#ipad">Touch on the iPad</a></li>
+    <li><a href="#building">Building and testing</a></li>
+  </ul>
+</header>
+
+<main>
+<section class="wrap">
+  <h2 id="big-picture">The big picture</h2>
+  <p>There are two halves. On the <strong>Mac</strong>, a small Python program (<code>server.py</code>) reads the games you own and keeps your saves. In the <strong>browser</strong>, a set of web pages runs each game with Everett's KINT interpreter, translated to WebAssembly, a form of machine code that browsers can run at near-native speed.</p>
+  <p>The server never runs any game code. It only hands out files and stores what the games write. All the work of running a game happens inside the browser, which is why a game you've downloaded keeps working on the iPad with the Mac switched off.</p>
+</section>
+
+<figure class="wide">
+  <div class="diagram" role="img" aria-label="Diagram: the Mac side holds the games folder, server.py and the saves folder. The server talks HTTPS on port 8765 to the browser. In the browser, every request passes through the service worker. The launcher opens the game page, which exchanges input and screen updates with the game worker running the interpreter. The download worker and the game worker use device storage.">
+  <svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+      <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head-m"/></marker>
+    </defs>
+
+    <!-- Mac region -->
+    <rect class="region" x="16" y="30" width="290" height="470" rx="12"/>
+    <text class="t-region" x="34" y="56">YOUR MAC</text>
+
+    <rect class="box-alt" x="36" y="76" width="250" height="96" rx="8"/>
+    <text class="t-title" x="52" y="102">games/</text>
+    <text class="t-small" x="52" y="124">Links to your installed .app games.</text>
+    <text class="t-small" x="52" y="142">Each holds MAIN.KE plus pictures,</text>
+    <text class="t-small" x="52" y="160">sounds, music and puzzles.</text>
+
+    <rect class="box" x="36" y="212" width="250" height="110" rx="8"/>
+    <text class="t-title" x="52" y="238">server.py</text>
+    <text class="t-small" x="52" y="260">Python, standard library only.</text>
+    <text class="t-small" x="52" y="278">Lists games, serves their files,</text>
+    <text class="t-small" x="52" y="296">stores saves, packs downloads.</text>
+    <text class="t-mono" x="52" y="314">cert.pem · key.pem (mkcert)</text>
+
+    <rect class="box-alt" x="36" y="368" width="250" height="96" rx="8"/>
+    <text class="t-title" x="52" y="394">saves/&lt;game&gt;/</text>
+    <text class="t-small" x="52" y="416">Everything a game writes: settings,</text>
+    <text class="t-small" x="52" y="434">statistics, the puzzle in progress.</text>
+
+    <line class="arrow" x1="161" y1="173" x2="161" y2="209" marker-end="url(#ah)"/>
+    <text class="t-mono" x="170" y="196">read only</text>
+    <line class="arrow" x1="161" y1="325" x2="161" y2="365" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <text class="t-mono" x="170" y="350">read + write</text>
+
+    <!-- network -->
+    <line class="arrow" x1="289" y1="267" x2="364" y2="267" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <text class="t-mono" x="296" y="256">HTTPS</text>
+    <text class="t-mono" x="300" y="288">:8765</text>
+
+    <!-- Browser region -->
+    <rect class="region" x="356" y="30" width="530" height="470" rx="12"/>
+    <text class="t-region" x="376" y="56">BROWSER · MAC OR IPAD</text>
+
+    <rect class="strip" x="370" y="76" width="44" height="388" rx="8"/>
+    <text class="t-title" transform="translate(398 400) rotate(-90)">Service worker · sw.js</text>
+
+    <rect class="box" x="446" y="76" width="190" height="86" rx="8"/>
+    <text class="t-title" x="462" y="102">Launcher</text>
+    <text class="t-mono" x="462" y="122">index.html</text>
+    <text class="t-small" x="462" y="144">The game list.</text>
+
+    <rect class="box" x="690" y="76" width="180" height="86" rx="8"/>
+    <text class="t-title" x="706" y="102">Download worker</text>
+    <text class="t-mono" x="706" y="122">download.js</text>
+    <text class="t-small" x="706" y="144">Copies a game here.</text>
+
+    <rect class="box" x="446" y="212" width="190" height="110" rx="8"/>
+    <text class="t-title" x="462" y="238">Game page</text>
+    <text class="t-mono" x="462" y="258">play.html · play.js</text>
+    <text class="t-small" x="462" y="280">Draws the screen, plays</text>
+    <text class="t-small" x="462" y="298">sound, reads mouse, keys</text>
+    <text class="t-small" x="462" y="316">and touch.</text>
+
+    <rect class="box" x="690" y="212" width="180" height="110" rx="8"/>
+    <text class="t-title" x="706" y="238">Game worker</text>
+    <text class="t-mono" x="706" y="258">worker.js + kint5/6.wasm</text>
+    <text class="t-small" x="706" y="280">Everett's interpreter</text>
+    <text class="t-small" x="706" y="298">running MAIN.KE.</text>
+
+    <rect class="box-alt" x="446" y="388" width="424" height="76" rx="8"/>
+    <text class="t-title" x="462" y="414">Device storage (one per address)</text>
+    <text class="t-small" x="462" y="436">Downloaded games: one pack file each, in the browser's private file system.</text>
+    <text class="t-small" x="462" y="454">Saves and the game index: IndexedDB.</text>
+
+    <!-- browser arrows -->
+    <line class="arrow" x1="639" y1="119" x2="687" y2="119" marker-end="url(#ah)"/>
+    <line class="arrow" x1="541" y1="164" x2="541" y2="209" marker-end="url(#ah)"/>
+    <text class="t-mono" x="550" y="192">opens a window</text>
+    <line class="arrow-m" x1="639" y1="248" x2="687" y2="248" marker-end="url(#am)"/>
+    <text class="t-mono" x="641" y="240">input</text>
+    <line class="arrow" x1="687" y1="290" x2="639" y2="290" marker-end="url(#ah)"/>
+    <text class="t-mono" x="641" y="310">screen</text>
+    <line class="arrow" x1="780" y1="325" x2="780" y2="385" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <text class="t-mono" x="788" y="360">offline files</text>
+    <path class="arrow" d="M870,140 H882 V420 H873" marker-end="url(#ah)"/>
+  </svg>
+  </div>
+  <figcaption>Every request from the browser passes through the service worker on the left of the browser box. The pink arrow (input) is shared memory, not a message. The arrow down the right edge is the download worker writing a game into device storage.</figcaption>
+</figure>
+
+<section class="wrap">
+  <h2 id="games">What a Kaser game is</h2>
+  <p>Everett doesn't write each game in C. He writes it in his own language, which compiles to a file called <code>MAIN.KE</code>. A separate program, the <strong>KINT interpreter</strong>, reads <code>MAIN.KE</code> and carries out its instructions, much as a Java or Python runtime does. The Mac app you bought is that interpreter packaged with <code>MAIN.KE</code> and the game's pictures (BMP, JPG), sounds (WAV), music (MID), fonts, dialog layouts (<code>*.UI</code>) and puzzle files, all inside <code>Contents/Resources</code>.</p>
+  <p>That design is what made the port practical. Port the interpreter once, and every game built on it works, with no changes to the games themselves.</p>
+  <div class="cols">
+    <div class="card"><h4>KINT 5 · 37 games</h4><p>Sherlock, the Knarly series, Hero's Hearts and the rest. Their <code>MAIN.KE</code> starts with the letters <code>KASMB</code>. They run on the KINT 1–5 interpreter, whose C source came with Everett's KINT 5 kit.</p></div>
+    <div class="card"><h4>KINT 6 · 3 games</h4><p>Crocotile, Lair of Moriarty and Occam's Quilt. Their files start with <code>KINT6</code> and need a newer, different virtual CPU. Its source was in the KINT 6 zip, hidden behind a folder name a plain unzip skipped.</p></div>
+  </div>
+
+  <h2 id="interpreter">The interpreter in the browser</h2>
+  <h3>Everett's C code, nearly unchanged</h3>
+  <p>The KINT 5 interpreter has three parts that matter: <code>pmach.c</code> (the virtual machine, plus all the drawing, which it does itself in software), <code>float.c</code> (decimal numbers) and <code>djpeg.c</code> (JPEG pictures). None of them depend on Windows, so they are compiled as they are.</p>
+  <p>The fourth part, <code>main.c</code>, is where Windows comes in: windows, the message pump, files, sound, timers. That file is left out and replaced by a <strong>platform layer</strong> written for the browser: <code>engine/k5/kplat.c</code> in C, backed by <code>engine/k5/kint_lib.js</code> in JavaScript. It keeps the same message queue, idle handling and coordinate rules as Everett's <code>main.c</code>, so <code>MAIN.KE</code> sees the world it expects.</p>
+  <p>The few edits to Everett's own files are made by <code>engine/patch_k5.py</code> on copies, never on the originals. Each edit is an exact find-and-replace that must match exactly once, so if Everett ships a new version that no longer matches, the build stops instead of producing something subtly broken. KINT 6 works the same way: <code>patch_k6.py</code> lifts the portable parts of its <code>main.c</code> (file loader, message queue, memory manager) into <code>kmain6.c</code>, and <code>kplat6.c</code> supplies the browser side. KINT 6 also brings two small libraries for PNG pictures.</p>
+
+  <h3>Compiled to WebAssembly</h3>
+  <p><strong>Emscripten</strong> (<code>emcc</code>) compiles the C into <code>web/kint5.wasm</code> and <code>web/kint6.wasm</code>, plus a small JavaScript loader for each. One detail made this a natural fit: the virtual machine keeps real memory addresses in its 32-bit registers, as it did on 32-bit Windows, and WebAssembly also uses 32-bit addresses. So the original code works without reworking how it stores pointers.</p>
+
+  <h3>A loop that never lets go</h3>
+  <p>A Windows program sits in a loop forever: wait for a message, handle it, repeat. Web pages work the other way round. A page's code must keep returning control to the browser, or the page freezes. Rewriting Everett's loop inside out would mean changing the interpreter deeply.</p>
+  <p>The port avoids that by running each game in a <strong>Web Worker</strong>, a background thread with no screen of its own. A worker is allowed to block, so the interpreter's loop runs exactly as written. Three consequences follow:</p>
+  <ul>
+    <li><strong>Input through shared memory.</strong> The game page writes mouse, key and touch events into a small ring buffer in a <code>SharedArrayBuffer</code>, memory both threads can see. When the game has nothing to do, it waits with <code>Atomics.wait</code>: the thread sleeps until the page signals a new event or the game's next timer is due. That is the browser equivalent of Windows' <code>GetMessage</code>.</li>
+    <li><strong>Files must be instant.</strong> The game expects <code>fopen</code> and <code>fread</code> to return straight away. So file calls either use synchronous requests to the server, or read from the downloaded copy, which is already on the device (see <a href="#files">Files and saves</a>).</li>
+    <li><strong>Output goes out as messages.</strong> Screen updates, sounds, the window title, the mouse cursor shape, "open this web page" and "the game has exited" are posted to the game page, which acts on them.</li>
+  </ul>
+  <div class="note"><p><strong>Why HTTPS matters here.</strong> Browsers only allow <code>SharedArrayBuffer</code> on a page that is both secure (HTTPS, or <code>localhost</code>) and "cross-origin isolated". The server sends the two headers that grant that isolation (<code>Cross-Origin-Opener-Policy</code> and <code>Cross-Origin-Embedder-Policy</code>) with every response. Without HTTPS, the iPad couldn't run the games at all.</p></div>
+
+  <h2 id="click">From click to play</h2>
+  <p>Here's what happens when you click Sherlock in the launcher:</p>
+  <ol class="steps">
+    <li>The launcher checks whether Sherlock is already kept on this device, and whether the server has a newer version. If the stored copy is out of date, it downloads the new one first.</li>
+    <li>It opens <code>/play?g=Sherlock</code> in a new window named after the game. If that window already exists, it brings it to the front instead, so two copies can't overwrite each other's saves. In the iPad Home Screen app, the game replaces the launcher instead.</li>
+    <li>The game page (<code>play.js</code>) sets up the canvas, the input ring buffer and sound, then starts <code>worker.js</code>, telling it the game's name and whether to use the copy on this device.</li>
+    <li>The worker loads <code>kint5.wasm</code> or <code>kint6.wasm</code>, connects it to a file system (the server's or the device's), and calls the interpreter's entry point, <code>kp_main</code>.</li>
+    <li>The interpreter opens <code>pgm/MAIN.KE</code>, the same file the Mac app runs, and starts carrying out Sherlock's code. From here on, the worker never stops.</li>
+    <li>Sherlock reads its settings from <code>app/</code>, draws its window and posts the first screen. Your clicks flow in through the ring buffer; screens and sounds flow back out.</li>
+    <li>When you choose Exit, the game saves its state and the worker sends <code>exit</code>. The page waits until every save has been written, then closes the window.</li>
+  </ol>
+
+  <h2 id="screen-sound">Screen, sound, music</h2>
+  <div class="cols">
+    <div class="card"><h4>Screen</h4><p>The interpreter draws into its own pixel buffer, as it did on Windows. The platform layer tracks which rectangles changed and posts only those to the page, which paints them onto a <code>&lt;canvas&gt;</code>. The canvas fills the window and is scaled with sharp, blocky pixels so text stays crisp.</p></div>
+    <div class="card"><h4>Sound effects</h4><p>WAV files, from disk or built into the game's memory, are decoded by the browser's Web Audio system and played. Browsers allow sound only after you've interacted with the page, which is why sound starts with your first click or tap.</p></div>
+    <div class="card"><h4>Music</h4><p>The games' background music is MIDI. Browsers can't play MIDI themselves, so <strong>SpessaSynth</strong>, a software synthesizer, plays it with the General MIDI instrument bank built into macOS (<code>gs_instruments.dls</code>). The server provides that bank at <code>/api/soundbank</code>, and the iPad keeps a copy for offline play. When a song ends, the game is told, as Windows would tell it, so it can start the next one.</p></div>
+  </div>
+
+  <h2 id="files">Files and saves</h2>
+  <p>KINT games see two folders. <code>pgm/</code> is the game's own folder (read-only; on the Mac, the <code>.app</code>'s <code>Contents/Resources</code>). <code>app/</code> is its save folder. Names are matched without regard to case, as on Windows, because the games were written for Windows.</p>
+  <p>The worker's file calls go through <code>web/fs.js</code>, which has two interchangeable back ends:</p>
+  <div class="cols">
+    <div class="card"><span class="path">serverFS</span><h4>Straight from the Mac</h4><p>Each file call becomes a synchronous request to <code>/api/g/&lt;game&gt;/…</code>: read, stat, list, write, make or remove a folder. Saves land in <code>saves/&lt;game&gt;/</code> on the Mac. Files the game has already read are cached, so each one is fetched only once per session.</p></div>
+    <div class="card"><span class="path">localFS</span><h4>From this device</h4><p>Reads come from the game's pack file, already loaded. Writes are kept in memory, so the game never waits, and the page saves them to IndexedDB in the background. Before the window closes, the page waits until every save has been stored.</p></div>
+  </div>
+  <p>Your saves from the native Mac apps (in <code>~/Library/Application Support/Everett Kaser Software/</code>) were copied once into <code>saves/</code> by <code>tools/import_native_saves.py</code>. From then on the two are separate. Playing in the browser doesn't change the native apps' saves, and the other way round.</p>
+
+  <h2 id="server">The server</h2>
+  <p><code>server.py</code> uses only Python's standard library, so there's nothing to install. When it starts, it looks in <code>games/</code> for apps containing a <code>MAIN.KE</code>, works out which interpreter each needs from the file's first bytes, and listens on port 8765. Each connection gets its own thread, so a slow iPad never holds up the Mac.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Address</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>/</code></td><td>The launcher.</td></tr>
+      <tr><td><code>/play?g=…</code></td><td>The game page.</td></tr>
+      <tr><td><code>/web/…</code></td><td>The app's own files: scripts, the interpreters, SpessaSynth.</td></tr>
+      <tr><td><code>/api/games</code></td><td>The game list, with each game's version.</td></tr>
+      <tr><td><code>/api/icon/…</code> <code>/api/info/…</code></td><td>A game's icon (taken from its <code>.app</code>) and details.</td></tr>
+      <tr><td><code>/api/g/&lt;game&gt;/…</code></td><td>File access for a running game: read, write, list, stat, folders.</td></tr>
+      <tr><td><code>/api/pack/&lt;game&gt;/index</code></td><td>The list of files in a game, their sizes and a version fingerprint.</td></tr>
+      <tr><td><code>/api/pack/&lt;game&gt;/data</code></td><td>All of a game's files streamed back to back, for downloading. If the game changed since the index was read, it answers "game changed" instead.</td></tr>
+      <tr><td><code>/api/saves/&lt;game&gt;</code></td><td>Your saves for a game, copied to the device on its first download.</td></tr>
+      <tr><td><code>/api/soundbank</code></td><td>The macOS General MIDI instrument bank for music.</td></tr>
+      <tr><td><code>/sw.js</code></td><td>The service worker, stamped with a fingerprint of everything in <code>web/</code> so browsers notice updates.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2 id="offline">Playing offline</h2>
+  <p>Three browser features let a game run with the Mac switched off:</p>
+  <ul>
+    <li><strong>The service worker</strong> (<code>sw.js</code>) keeps a copy of the app itself: pages, scripts, interpreters, icons and the music bank. When you open the launcher, it serves those from the copy. For the game list, it asks the server first and gives up after 2.5 seconds, falling back to the last list it saw and marking it as offline. That mark is what shows the "can't reach the game server" notice.</li>
+    <li><strong>The download worker</strong> (<code>download.js</code>) fetches a game's index, then streams its data into a single <strong>pack file</strong> in the browser's private file system. The index (which file starts where in the pack) goes into IndexedDB. A game made of between 130 and 1,000 files, up to about 80 MB, becomes one file on the device.</li>
+    <li><strong>IndexedDB</strong> holds your saves on that device. On a game's first download they're copied from the Mac, so your progress carries over. After that, saves on the device stay there; sending them back to the Mac is the piece you deferred.</li>
+  </ul>
+  <p>Downloads happen when <em>Keep games on this device when I play them</em> is ticked, or when you use <em>Download all games</em>. When the server reports a newer version of a game, its fingerprint changes and the launcher downloads it again the next time you play it.</p>
+  <div class="note"><p><strong>Storage belongs to the address.</strong> Browsers keep storage separate for each site address, and <code>https://192.168.4.48:8765</code> and <code>https://192.168.4.45:8765</code> count as different sites. That's why changing the Mac's IP address means downloading again, and why the Wi-Fi reservation matters.</p></div>
+
+  <h2 id="network">Network and HTTPS</h2>
+  <h3>Listening</h3>
+  <p>The server listens on every network connection the Mac has, over both IPv4 and IPv6, so the iPad can reach it at <code>https://192.168.4.48:8765</code>. The macOS firewall must allow Python to accept incoming connections; yours does.</p>
+  <h3>The certificate</h3>
+  <p>HTTPS needs a certificate the browser trusts. <strong>mkcert</strong> made a private certificate authority on your Mac, a "root" certificate that exists only on your machines, and used it to sign <code>cert.pem</code> for your Mac's addresses. A device trusts the server only if it trusts that root. That's what you installed on the iPad: the <code>rootCA.pem</code> profile, then full trust under Certificate Trust Settings.</p>
+  <p>Today's hang came from this. The iPad had never fully trusted the root, so when the server got a new certificate for the new IP address, the iPad refused it. A normal page would have shown a warning, but the launcher was running from the service worker's copy, so its background requests failed without any warning. Now that the root is trusted, any future certificate from the same mkcert is accepted automatically.</p>
+  <h3>Typing <code>http://</code> by mistake</h3>
+  <p>Every HTTPS connection starts with a "handshake" message whose first byte is <code>0x16</code>. The server peeks at the first byte of each new connection. If it's anything else, the visitor typed <code>http://</code>, so the server answers in plain HTTP with a redirect to the same page over <code>https://</code>.</p>
+
+  <h2 id="ipad">Touch on the iPad</h2>
+  <p>The games were made for a mouse, so the game page turns touches into mouse actions:</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>You do</th><th>The game sees</th></tr></thead>
+    <tbody>
+      <tr><td>Tap</td><td>Left click</td></tr>
+      <tr><td>Touch and drag</td><td>Left-button drag</td></tr>
+      <tr><td>Touch and hold (about half a second)</td><td>Right click; a ring flashes to confirm</td></tr>
+      <tr><td>Tap with two fingers</td><td>Right click where the first finger is</td></tr>
+      <tr><td>Swipe, with <span class="kbd">✥</span> switched on</td><td>Arrow keys. Each flick is one press, a long swipe repeats, and holding the finger still keeps the key repeating. On by default for the three Hero games.</td></tr>
+      <tr><td>Tap <span class="kbd">⌨</span></td><td>Opens the on-screen keyboard, for typing names</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>A mouse or trackpad connected to the iPad works as a normal mouse. The page blocks the iPad's own long-press features on the game (text selection, the magnifier, the callout menu) so they don't get in the way. Added to the Home Screen, the launcher runs as a full-screen app.</p>
+
+  <h2 id="building">Building and testing</h2>
+  <p><code>engine/build.sh</code> rebuilds both interpreters: it runs the two patch scripts on Everett's sources in <code>kint_src/</code>, then <code>emcc</code> twice, writing <code>web/kint5.*</code> and <code>web/kint6.*</code>. <code>engine/build.sh debug</code> builds a slower version with extra checks, for tracking down crashes.</p>
+  <p><code>tools/cdp.mjs</code> drives a hidden copy of Chrome: it opens a page, waits, clicks, types, runs checks and takes screenshots. It was used to confirm that all 40 games reach their opening screens, online and offline, and to test the new-window launcher today.</p>
+  <p>Git tracks only the port's own files. Your games, saves, certificates, Everett's KINT source and the built interpreters stay out of it. The zip for Everett is built from those tracked files, adds the built interpreters, and swaps your Mac's name and addresses for examples.</p>
+  <div class="note"><p><strong>License.</strong> Everett's license allows private use only. The port, his source and the games stay on your own machines and are never published. Everett has the zip because the interpreter is his.</p></div>
+</section>
+</main>
+</body>
+</html>

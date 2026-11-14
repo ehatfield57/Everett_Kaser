@@ -1,0 +1,140 @@
+HOW KASER WEB WORKS
+===================
+
+A short summary of how your Everett Kaser games run in Chrome and Safari.
+For the full explanation, with a diagram, open HOW-IT-WORKS.html in a
+browser (double-click it in Finder).
+
+
+A Kaser game is a program plus an interpreter
+---------------------------------------------
+Everett doesn't write each game in C. He writes it in his own language,
+which compiles to a file called MAIN.KE. A separate program, the KINT
+interpreter, reads MAIN.KE and carries out its instructions. Each Mac app
+is that interpreter bundled with the game's MAIN.KE and its pictures,
+sounds, music, fonts and puzzles (inside Contents/Resources).
+
+37 games use KINT 5 (MAIN.KE starts with "KASMB"). Crocotile, Lair of
+Moriarty and Occam's Quilt use KINT 6, a newer interpreter.
+
+
+The port moves the interpreter, not the games
+---------------------------------------------
+Everett's C code for the interpreter (pmach.c, float.c, djpeg.c, and the
+KINT 6 equivalents) is compiled, nearly unchanged, to WebAssembly: machine
+code that browsers can run at near-native speed. The result is
+web/kint5.wasm and web/kint6.wasm.
+
+Only his Windows-specific part (main.c: windows, files, sound, timers) is
+left out and replaced with a browser version: engine/k5/kplat.c and
+engine/k5/kint_lib.js (engine/k6/kplat6.c for KINT 6). The few edits to
+Everett's own files are exact find-and-replace patches applied to copies
+by engine/patch_k5.py and engine/patch_k6.py.
+
+Because the interpreter is ported, all 40 games run unmodified, using the
+same MAIN.KE files as the Mac apps.
+
+
+Each game runs in a background thread
+-------------------------------------
+A Windows program loops forever: wait for a message, handle it, repeat.
+Web pages can't do that without freezing, so each game runs in a Web
+Worker (a background thread), where the interpreter's loop works exactly
+as Everett wrote it.
+
+  - Your clicks, keys and touches reach the game through a small piece of
+    memory both threads share (a SharedArrayBuffer). While it has nothing
+    to do, the game sleeps until an event arrives or a timer is due.
+  - Screen updates, sounds, the window title and "the game has exited"
+    come back to the game page as messages.
+  - File reads have to be instant, so they either ask the server directly
+    or read from the copy of the game already stored on the device.
+
+Browsers only allow that shared memory on secure (HTTPS) pages that send
+two special headers. That's why the server uses HTTPS, and why the iPad
+needs it.
+
+
+Screen, sound and music
+-----------------------
+  - Screen: the interpreter draws into its own pixel buffer, as on
+    Windows. Only the changed rectangles are sent to the page, which paints
+    them onto a canvas that fills the window.
+  - Sound effects: WAV files, played with the browser's Web Audio.
+    Browsers allow sound only after your first click or tap.
+  - Music: the games' MIDI music is played by SpessaSynth, a software
+    synthesizer, using the General MIDI instruments built into macOS
+    (gs_instruments.dls).
+
+
+server.py only hands out files
+------------------------------
+server.py uses only Python's standard library. It:
+  - finds the games linked in games/ and works out which interpreter each
+    one needs,
+  - serves the launcher, the game page and the game files,
+  - stores everything the games write in saves/<game name>/,
+  - streams a whole game as one "pack" when a device downloads it.
+
+It never runs any game code. All of that happens in the browser.
+
+
+Offline play
+------------
+Three things let a downloaded game run with the Mac switched off:
+
+  - The service worker (web/sw.js) keeps a copy of the app itself:
+    pages, scripts, interpreters, icons and the music instruments.
+  - Each downloaded game becomes one pack file in the browser's private
+    file system, with its index in the browser's database (IndexedDB).
+  - Your saves on that device live in the browser's database too. On a
+    game's first download they're copied from the Mac, so progress carries
+    over. Saves made on the device stay there (sending them back to the Mac
+    hasn't been built yet).
+
+Each address keeps its own storage. https://192.168.4.48:8765 and
+https://192.168.4.45:8765 count as different sites, which is why changing
+the Mac's IP address means downloading again.
+
+
+HTTPS and the certificate
+-------------------------
+mkcert made a private certificate authority (a "root" certificate) that
+exists only on your machines, and used it to sign cert.pem for the Mac's
+addresses. Each device must trust that root: on the iPad, by installing
+rootCA.pem and turning on full trust under Settings > General > About >
+Certificate Trust Settings.
+
+That's what caused the hang on the iPad: it had never fully trusted the
+root, so it refused the new certificate made for the new IP address. The
+browser's warning was hidden because the launcher was running from the
+service worker's copy. Now that the root is trusted, any future
+certificate from the same mkcert is accepted automatically.
+
+If you type http:// instead of https://, the server notices (an HTTPS
+connection always starts with the byte 0x16) and redirects you to the
+https:// address.
+
+
+Touch on the iPad
+-----------------
+  Tap                        left click
+  Touch and drag             left-button drag
+  Touch and hold (~0.5 s)    right click (a ring flashes)
+  Two-finger tap             right click
+  Swipe, with the swipe button (four-way arrow) on    arrow keys
+                             (on by default for the Hero games)
+  Keyboard button            opens the on-screen keyboard
+
+
+Building and testing
+--------------------
+  engine/build.sh          rebuilds both interpreters (needs emcc)
+  engine/build.sh debug    a slower build with extra checks
+  tools/cdp.mjs            drives a hidden Chrome to test that games start
+
+Git tracks only the port's own files. Your games, saves, certificates,
+Everett's KINT source and the built interpreters stay out of it.
+
+Everett's license allows private use only. Keep all of this on your own
+machines.
