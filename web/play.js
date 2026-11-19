@@ -153,8 +153,23 @@ function pauseMusic(pause) {
 }
 
 // ----------------------------------------------------------------- screen
+// The games lay themselves out for a desktop-sized window, so a phone gets a
+// game screen at least PHONE_MIN_W x PHONE_MIN_H (same shape as the window),
+// shown shrunk to fit.  Elsewhere the game screen is the window's size.
+const PHONE_MIN_W = 1024, PHONE_MIN_H = 720;
+const isPhone = navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 600;
+function gameSize(w, h) {
+  const f = isPhone ? Math.max(1, PHONE_MIN_W / w, PHONE_MIN_H / h) : 1;
+  return { w: Math.round(w * f), h: Math.round(h * f) };
+}
 function viewSize() {
-  return { w: Math.max(1, Math.floor(window.innerWidth)), h: Math.max(1, Math.floor(window.innerHeight)) };
+  return gameSize(Math.max(1, Math.floor(window.innerWidth)), Math.max(1, Math.floor(window.innerHeight)));
+}
+// The largest game screen either way up, so turning the phone never needs more than the game set aside.
+function screenSize() {
+  if (!isPhone) return { w: screen.width, h: screen.height };
+  const a = gameSize(screen.width, screen.height), b = gameSize(screen.height, screen.width);
+  return { w: Math.max(a.w, b.w), h: Math.max(a.h, b.h) };
 }
 function sizeCanvas(w, h) {
   if (canvas.width === w && canvas.height === h) return;
@@ -162,6 +177,55 @@ function sizeCanvas(w, h) {
   canvas.height = h;
   canvas.style.width = w + 'px';
   canvas.style.height = h + 'px';
+  relayout();
+}
+
+// ------------------------------------------------------------------- zoom
+// The canvas is placed with a CSS transform: whole ("fit") or magnified with
+// two fingers.  The game doesn't know; pos() maps touches back through it.
+// zoom = how far in (1 = fit) and which spot of the game screen (as a fraction
+// of its size) is in the middle of the window; it's kept per game.
+const MAX_SCALE = 3;                 // most CSS pixels per game pixel
+const ZOOM_PREF = 'kaser.zoom.' + GAME;
+const zoom = { z: 1, cx: 0.5, cy: 0.5 };
+try {
+  const v = JSON.parse(localStorage.getItem(ZOOM_PREF));
+  if (v && v.z > 1) Object.assign(zoom, { z: +v.z, cx: +v.cx, cy: +v.cy });
+} catch {}
+function fitScale() {
+  return Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height, 1);
+}
+function zoomed() { return zoom.z > 1.001; }
+// Show the canvas at scale s with its corner at (tx, ty), kept on screen.
+function placeCanvas(s, tx, ty) {
+  const W = window.innerWidth, H = window.innerHeight, fit = fitScale();
+  s = Math.min(Math.max(s, fit), Math.max(fit, MAX_SCALE));
+  const cw = canvas.width * s, ch = canvas.height * s;
+  tx = cw <= W ? (W - cw) / 2 : Math.min(0, Math.max(W - cw, tx));
+  ty = ch <= H ? (H - ch) / 2 : Math.min(0, Math.max(H - ch, ty));
+  zoom.z = s / fit; zoom.cx = (W / 2 - tx) / cw; zoom.cy = (H / 2 - ty) / ch;
+  canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+  // Square pixels when each game pixel covers a whole number of screen pixels
+  // (or plenty of them); smoothed otherwise, so shrunk text stays readable.
+  const p = s * (window.devicePixelRatio || 1);
+  canvas.style.imageRendering = p >= 2.5 || Math.abs(p - Math.round(p)) < 0.01 ? 'pixelated' : 'auto';
+  document.getElementById('zoomBtn').classList.toggle('show', zoomed());
+}
+// The window or the game screen changed size: keep the same zoom and spot.
+function relayout() {
+  const s = fitScale() * zoom.z;
+  placeCanvas(s, window.innerWidth / 2 - zoom.cx * canvas.width * s,
+                 window.innerHeight / 2 - zoom.cy * canvas.height * s);
+}
+function saveZoom() {
+  try {
+    if (zoomed()) localStorage.setItem(ZOOM_PREF, JSON.stringify(zoom));
+    else localStorage.removeItem(ZOOM_PREF);
+  } catch {}
+}
+function zoomOut() {
+  placeCanvas(0, 0, 0);
+  saveZoom();
 }
 
 // ----------------------------------------------------------------- worker
@@ -171,7 +235,7 @@ worker.onmessage = (e) => {
   const m = e.data;
   switch (m.t) {
     case 'frame':
-      if (statusEl) statusEl.remove();
+      if (statusEl.isConnected) { statusEl.remove(); firstFrame(); }
       sizeCanvas(m.cw, m.ch);
       ctx.putImageData(new ImageData(new Uint8ClampedArray(m.buf), m.w, m.h), m.x, m.y);
       break;
@@ -221,11 +285,11 @@ async function start() {
   }
   const sab = new SharedArrayBuffer((BASE + RING_CAP * EV_SIZE) * 4);
   ring = new Int32Array(sab);
-  const { w, h } = viewSize();
+  const { w, h } = viewSize(), scr = screenSize();
   sizeCanvas(w, h);
   worker.postMessage({ t: 'init', game: GAME, local, sab, ringCap: RING_CAP, music: true,
                        engine: info.engine, pgmShown: info.pgm, appShown: info.app,
-                       screenW: screen.width, screenH: screen.height, w, h });
+                       screenW: scr.w, screenH: scr.h, w, h });
   canvas.focus();
 }
 
@@ -235,9 +299,10 @@ function mouseFlags(e) {
   return (e.buttons & 1 ? 1 : 0) | (e.buttons & 2 ? 2 : 0) | (e.shiftKey ? 4 : 0) |
          (e.ctrlKey ? 8 : 0) | (e.buttons & 4 ? 0x10 : 0);
 }
+// Window position -> game screen pixel, through any zoom.
 function pos(e) {
-  const r = canvas.getBoundingClientRect();
-  return [Math.floor(e.clientX - r.left), Math.floor(e.clientY - r.top)];
+  const r = canvas.getBoundingClientRect(), k = canvas.width / r.width;
+  return [Math.floor((e.clientX - r.left) * k), Math.floor((e.clientY - r.top) * k)];
 }
 const BTN = { 0: 0, 1: 1, 2: 2 };      // DOM button -> left/middle/right
 let buttonsDown = 0;
@@ -279,6 +344,7 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 //   touch and drag         -> left-button drag
 //   touch and hold         -> right click (a ring shows when it registers)
 //   tap with two fingers   -> right click where the first finger is
+//   spread / pinch two fingers -> zoom in / out (it stays zoomed); move two fingers to look around
 // With "swipe = arrow keys" switched on (the ✥ button), a drag becomes arrow
 // keys instead: a flick is one press, every SWIPE_STEP of travel is another,
 // and holding the finger still after a swipe repeats the key.
@@ -286,7 +352,8 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 const LONG_PRESS_MS = 450, MOVE_SLOP = 10;
 const SWIPE_FIRST = 24, SWIPE_STEP = 40, REPEAT_DELAY_MS = 500, REPEAT_MS = 150;
 const VK = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, BACK: 8, ENTER: 13, SPACE: 32 };
-let touch = null;   // { id, x, y, state: 'pending' | 'drag' | 'swipe' | 'done', timer, ax, ay, vk, pressed }
+let touch = null;   // { id, x, y (game), cx, cy (window), state: 'pending' | 'drag' | 'swipe' | 'pinch' | 'done',
+                    //   timer, ax, ay (window), vk, pressed }
 let swipeMode = false;
 
 // One key press.  The release comes a moment later so a game that polls the
@@ -321,11 +388,11 @@ function rightClickAt(x, y) {
   showRing(x, y);
 }
 function showRing(x, y) {
-  const r = canvas.getBoundingClientRect();
+  const r = canvas.getBoundingClientRect(), k = r.width / canvas.width;
   const el = document.createElement('div');
   el.className = 'touch-ring';
-  el.style.left = (r.left + x) + 'px';
-  el.style.top = (r.top + y) + 'px';
+  el.style.left = (r.left + (x + 0.5) * k) + 'px';
+  el.style.top = (r.top + (y + 0.5) * k) + 'px';
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 400);
 }
@@ -334,43 +401,90 @@ function endTouch() {
   touch = null;
 }
 
+// Two fingers: spread or pinch to zoom, move together to look around.  If
+// they lift quickly without moving it's a two-finger tap (right click).
+const TWO_TAP_MS = 600, PINCH_SLOP = 12;
+const fingers = new Map();   // pointerId -> [clientX, clientY], every finger on the canvas
+let pinch = null;            // { a, b, d0, mx0, my0, s0, tx0, ty0, t0, moved }
+function fingerSpan() {
+  const [ax, ay] = fingers.get(pinch.a), [bx, by] = fingers.get(pinch.b);
+  return { d: Math.max(1, Math.hypot(bx - ax, by - ay)), mx: (ax + bx) / 2, my: (ay + by) / 2 };
+}
+function startPinch(id) {
+  clearTimeout(touch.timer);
+  touch.state = 'pinch';
+  const r = canvas.getBoundingClientRect();
+  pinch = { a: touch.id, b: id, s0: r.width / canvas.width, tx0: r.left, ty0: r.top,
+            t0: performance.now(), moved: false };
+  const { d, mx, my } = fingerSpan();
+  Object.assign(pinch, { d0: d, mx0: mx, my0: my });
+}
+function movePinch() {
+  const { d, mx, my } = fingerSpan();
+  if (!pinch.moved && Math.abs(d - pinch.d0) < PINCH_SLOP &&
+      Math.hypot(mx - pinch.mx0, my - pinch.my0) < PINCH_SLOP) return;
+  pinch.moved = true;
+  // Keep the game spot that was between the fingers between them.
+  const s = pinch.s0 * d / pinch.d0;
+  const gx = (pinch.mx0 - pinch.tx0) / pinch.s0, gy = (pinch.my0 - pinch.ty0) / pinch.s0;
+  placeCanvas(s, mx - gx * s, my - gy * s);
+}
+function endPinch(lifted) {
+  if (pinch.moved) {
+    if (zoom.z < 1.08) zoomOut();    // nearly all the way out: snap to the whole screen
+    saveZoom();
+  } else if (lifted && performance.now() - pinch.t0 < TWO_TAP_MS) {
+    rightClickAt(touch.x, touch.y);
+  }
+  pinch = null;
+  touch.state = 'done';               // the other finger does nothing until it lifts
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'mouse') return;
   e.preventDefault();
   lastTouch = performance.now();
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
   if (overlay.classList.contains('show')) return;
   audioCtx();
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
   if (touch) {
-    // A second finger while the first is still waiting: two-finger tap.
-    if (touch.state === 'pending') { rightClickAt(touch.x, touch.y); touch.state = 'done'; clearTimeout(touch.timer); }
+    // A second finger while the first is still waiting: zoom, or a two-finger tap.
+    if (touch.state === 'pending' && !pinch) startPinch(e.pointerId);
     return;
   }
   if (document.activeElement !== kbd) canvas.focus();   // don't close the on-screen keyboard
-  try { canvas.setPointerCapture(e.pointerId); } catch {}
   const [x, y] = pos(e);
-  touch = { id: e.pointerId, x, y, state: 'pending', timer: 0 };
+  touch = { id: e.pointerId, x, y, cx: e.clientX, cy: e.clientY, state: 'pending', timer: 0 };
   touch.timer = setTimeout(() => {
     if (touch && touch.state === 'pending') { rightClickAt(touch.x, touch.y); touch.state = 'done'; }
   }, LONG_PRESS_MS);
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerType === 'mouse' || !touch || e.pointerId !== touch.id) return;
+  if (e.pointerType === 'mouse' || !fingers.has(e.pointerId)) return;
   e.preventDefault();
   lastTouch = performance.now();
-  const [x, y] = pos(e);
-  if (touch.state === 'pending' && swipeMode && Math.hypot(x - touch.x, y - touch.y) > MOVE_SLOP) {
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch) {
+    if (e.pointerId === pinch.a || e.pointerId === pinch.b) movePinch();
+    return;
+  }
+  if (!touch || e.pointerId !== touch.id) return;
+  // Distances are measured on the glass (CSS pixels), whatever the zoom.
+  const [x, y] = pos(e), cx = e.clientX, cy = e.clientY;
+  if (touch.state === 'pending' && swipeMode && Math.hypot(cx - touch.cx, cy - touch.cy) > MOVE_SLOP) {
     clearTimeout(touch.timer);
     touch.state = 'swipe';
-    touch.ax = touch.x; touch.ay = touch.y; touch.pressed = false;
+    touch.ax = touch.cx; touch.ay = touch.cy; touch.pressed = false;
   }
   if (touch.state === 'swipe') {
-    const dx = x - touch.ax, dy = y - touch.ay;
+    const dx = cx - touch.ax, dy = cy - touch.ay;
     const vk = swipeDir(dx, dy, touch.pressed ? SWIPE_STEP : SWIPE_FIRST);
-    if (vk) swipePress(vk, x, y);
+    if (vk) swipePress(vk, cx, cy);
     else if (touch.pressed && Math.hypot(dx, dy) > MOVE_SLOP) armRepeat();   // still moving: not a hold yet
     return;
   }
-  if (touch.state === 'pending' && Math.hypot(x - touch.x, y - touch.y) > MOVE_SLOP) {
+  if (touch.state === 'pending' && Math.hypot(cx - touch.cx, cy - touch.cy) > MOVE_SLOP) {
     // It's a drag: press the left button where the finger started.
     clearTimeout(touch.timer);
     touch.state = 'drag';
@@ -382,8 +496,10 @@ canvas.addEventListener('pointermove', (e) => {
 function touchUp(e) {
   if (e.pointerType === 'mouse') return;
   lastTouch = performance.now();
-  if (!touch || e.pointerId !== touch.id) return;
+  if (!fingers.delete(e.pointerId)) return;
   e.preventDefault();
+  if (pinch && (e.pointerId === pinch.a || e.pointerId === pinch.b)) endPinch(e.type === 'pointerup');
+  if (!touch || e.pointerId !== touch.id) return;
   audioCtx();           // iPad only lets sound start on a finger lift
   const [x, y] = pos(e);
   if (touch.state === 'pending' && e.type === 'pointerup') {
@@ -393,13 +509,15 @@ function touchUp(e) {
   } else if (touch.state === 'drag') {
     send(EV.MOUSEUP, 0, x, y, 0);
   } else if (touch.state === 'swipe' && !touch.pressed && e.type === 'pointerup') {
-    const vk = swipeDir(x - touch.ax, y - touch.ay, MOVE_SLOP);   // a short, fast flick
+    const vk = swipeDir(e.clientX - touch.ax, e.clientY - touch.ay, MOVE_SLOP);   // a short, fast flick
     if (vk) tapKey(vk);
   }
   endTouch();
 }
 canvas.addEventListener('pointerup', touchUp);
 canvas.addEventListener('pointercancel', touchUp);
+// Safari's own pinch-to-zoom of the whole page would fight ours.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 let wheelAcc = 0, hwheelAcc = 0;
 canvas.addEventListener('wheel', (e) => {
@@ -506,12 +624,28 @@ swipeMode = ARROW_GAMES.includes(GAME);
 try { const v = localStorage.getItem(SWIPE_PREF); if (v !== null) swipeMode = v === '1'; } catch {}
 setSwipe(swipeMode, false);
 
+// ⊖ appears while zoomed in and goes back to the whole game screen.
+const zoomBtn = document.getElementById('zoomBtn');
+zoomBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+zoomBtn.addEventListener('click', zoomOut);
+zoomBtn.classList.toggle('show', zoomed());
+
+// The first time a game is shown on a phone, say how to zoom.
+function firstFrame() {
+  try {
+    if (!isPhone || localStorage.getItem('kaser.zoomhint')) return;
+    localStorage.setItem('kaser.zoomhint', '1');
+  } catch { return; }
+  hint('Spread two fingers to zoom in');
+}
+
 // Only touch screens get the buttons; a Mac has a real keyboard.
 if (navigator.maxTouchPoints > 0) document.getElementById('touchbar').classList.add('show');
 
 // ---------------------------------------------------------- window events
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
+  relayout();
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => { const { w, h } = viewSize(); send(EV.RESIZE, w, h); }, 120);
 });

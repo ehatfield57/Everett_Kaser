@@ -50,6 +50,14 @@ Tips:
     finger still after a swipe repeats the key. Taps and touch-and-hold
     still click; dragging is off while it's on. It starts on for Hero's
     Hearts, Hero's Friends and Hero Defiant; each game remembers your choice.
+  - **Zoom:** spread two fingers to magnify the spot between them, and pinch
+    them together to shrink it again; it stays zoomed when you let go, so
+    you can tap and drag as usual. Move two fingers together to look around.
+    While zoomed in, **⊖** goes straight back to the whole screen. Each game
+    remembers its zoom.
+- **iPhone:** the games are laid out for a desktop-sized window, so on a phone
+  the game gets a screen at least 1024×720 (the shape of the phone), shrunk
+  to fit; zoom in to tap the small icons. Landscape works best.
 - **Not available:** printing, and pasting from the clipboard into a game.
 
 Server options:

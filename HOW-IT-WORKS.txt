@@ -129,6 +129,11 @@ Touch on the iPad
   Swipe, with the swipe button (four-way arrow) on    arrow keys
                              (on by default for the Hero games)
   Keyboard button            opens the on-screen keyboard
+  Spread / pinch two fingers zoom in / out (stays zoomed when you let go)
+  Move two fingers           look around while zoomed in
+  Zoom-out button (circled minus)    back to the whole screen
+  On an iPhone the game is laid out at desktop size and shrunk to fit;
+  zoom in to reach the small icons.
 
 
 Building and testing

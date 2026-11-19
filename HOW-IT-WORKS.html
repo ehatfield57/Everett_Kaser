@@ -315,7 +315,7 @@ html { scroll-behavior: smooth; }
   <h3>Typing <code>http://</code> by mistake</h3>
   <p>Every HTTPS connection starts with a "handshake" message whose first byte is <code>0x16</code>. The server peeks at the first byte of each new connection. If it's anything else, the visitor typed <code>http://</code>, so the server answers in plain HTTP with a redirect to the same page over <code>https://</code>.</p>
 
-  <h2 id="ipad">Touch on the iPad</h2>
+  <h2 id="ipad">Touch on the iPad and iPhone</h2>
   <p>The games were made for a mouse, so the game page turns touches into mouse actions:</p>
   <div class="table-wrap">
   <table>
@@ -327,10 +327,12 @@ html { scroll-behavior: smooth; }
       <tr><td>Tap with two fingers</td><td>Right click where the first finger is</td></tr>
       <tr><td>Swipe, with <span class="kbd">✥</span> switched on</td><td>Arrow keys. Each flick is one press, a long swipe repeats, and holding the finger still keeps the key repeating. On by default for the three Hero games.</td></tr>
       <tr><td>Tap <span class="kbd">⌨</span></td><td>Opens the on-screen keyboard, for typing names</td></tr>
+      <tr><td>Spread or pinch two fingers</td><td>Nothing: the page zooms in or out on the spot between your fingers, and stays zoomed when you let go. Move two fingers to look around; <span class="kbd">⊖</span> goes back to the whole screen.</td></tr>
     </tbody>
   </table>
   </div>
   <p>A mouse or trackpad connected to the iPad works as a normal mouse. The page blocks the iPad's own long-press features on the game (text selection, the magnifier, the callout menu) so they don't get in the way. Added to the Home Screen, the launcher runs as a full-screen app.</p>
+  <p>The games lay themselves out for a desktop-sized window, so on an iPhone the game gets a screen at least 1024×720 (the shape of the phone), shrunk to fit. Zooming is done by the page alone, so the game is unchanged: it always gets touches in its own screen positions.</p>
 
   <h2 id="building">Building and testing</h2>
   <p><code>engine/build.sh</code> rebuilds both interpreters: it runs the two patch scripts on Everett's sources in <code>kint_src/</code>, then <code>emcc</code> twice, writing <code>web/kint5.*</code> and <code>web/kint6.*</code>. <code>engine/build.sh debug</code> builds a slower version with extra checks, for tracking down crashes.</p>

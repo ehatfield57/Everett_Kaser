@@ -6,8 +6,8 @@
 <title>Loading…</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-  canvas { display: block; position: absolute; left: 0; top: 0; outline: none; image-rendering: pixelated;
-           touch-action: none; }
+  canvas { display: block; position: fixed; left: 0; top: 0; outline: none; image-rendering: pixelated;
+           touch-action: none; transform-origin: 0 0; }
   /* stop iPad's long-press text selection, magnifier and callout menu */
   body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
          -webkit-tap-highlight-color: transparent; }
@@ -34,6 +34,8 @@
                      background: rgba(30,30,30,.45); color: #fff; font: 20px/1 -apple-system, sans-serif;
                      padding: 0; opacity: .55; touch-action: manipulation; }
   #touchbar button.on { background: rgba(42,93,159,.9); opacity: .9; }
+  #touchbar #zoomBtn { display: none; }
+  #touchbar #zoomBtn.show { display: block; }
   #kbd { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0;
          font-size: 16px; /* 16px stops iPad zooming in on focus */ }
   #hint { position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%); padding: 8px 14px;
@@ -48,6 +50,7 @@
 <canvas id="screen" tabindex="0"></canvas>
 <div id="status">Starting…</div>
 <div id="touchbar">
+  <button id="zoomBtn" title="Zoom out to the whole screen" aria-label="Zoom out">⊖</button>
   <button id="swipeBtn" title="Swipe = arrow keys" aria-label="Swipe for arrow keys">✥</button>
   <button id="kbdBtn" title="Keyboard" aria-label="Show keyboard">⌨</button>
 </div>
