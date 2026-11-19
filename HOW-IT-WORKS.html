@@ -105,7 +105,7 @@ html { scroll-behavior: smooth; }
 <header class="wrap">
   <p class="eyebrow">Everett Kaser games · browser port</p>
   <h1>How Kaser Web works</h1>
-  <p class="lede">Your Kaser games run in Chrome and Safari, on the Mac and the iPad, using Everett's own interpreter. This page follows each piece, from the game file on your disk to the pixels and sounds in the browser.</p>
+  <p class="lede">Your Kaser games run in Chrome and Safari, on the Mac, the iPad and the iPhone, using Everett's own interpreter. This page follows each piece, from the game file on your disk to the pixels and sounds in the browser.</p>
   <ul class="toc">
     <li><a href="#big-picture">The big picture</a></li>
     <li><a href="#games">What a Kaser game is</a></li>
@@ -116,7 +116,7 @@ html { scroll-behavior: smooth; }
     <li><a href="#server">The server</a></li>
     <li><a href="#offline">Playing offline</a></li>
     <li><a href="#network">Network and HTTPS</a></li>
-    <li><a href="#ipad">Touch on the iPad</a></li>
+    <li><a href="#ipad">Touch and zoom</a></li>
     <li><a href="#building">Building and testing</a></li>
   </ul>
 </header>
@@ -261,7 +261,7 @@ html { scroll-behavior: smooth; }
 
   <h2 id="screen-sound">Screen, sound, music</h2>
   <div class="cols">
-    <div class="card"><h4>Screen</h4><p>The interpreter draws into its own pixel buffer, as it did on Windows. The platform layer tracks which rectangles changed and posts only those to the page, which paints them onto a <code>&lt;canvas&gt;</code>. The canvas fills the window and is scaled with sharp, blocky pixels so text stays crisp.</p></div>
+    <div class="card"><h4>Screen</h4><p>The interpreter draws into its own pixel buffer, as it did on Windows. The platform layer tracks which rectangles changed and posts only those to the page, which paints them onto a <code>&lt;canvas&gt;</code>. The canvas fills the window. On a touch screen it can be magnified with two fingers; the page shows square pixels when they line up with the screen's and smooths them when shrunk, so text stays readable.</p></div>
     <div class="card"><h4>Sound effects</h4><p>WAV files, from disk or built into the game's memory, are decoded by the browser's Web Audio system and played. Browsers allow sound only after you've interacted with the page, which is why sound starts with your first click or tap.</p></div>
     <div class="card"><h4>Music</h4><p>The games' background music is MIDI. Browsers can't play MIDI themselves, so <strong>SpessaSynth</strong>, a software synthesizer, plays it with the General MIDI instrument bank built into macOS (<code>gs_instruments.dls</code>). The server provides that bank at <code>/api/soundbank</code>, and the iPad keeps a copy for offline play. When a song ends, the game is told, as Windows would tell it, so it can start the next one.</p></div>
   </div>
