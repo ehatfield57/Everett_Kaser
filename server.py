@@ -3,9 +3,12 @@
 Local web server for playing Everett Kaser's games in Chrome.
 
     python3 server.py            # then open https://localhost:8765
+    py server.py --open          # on Windows (or double-click start-windows.bat)
 
-Games are read directly from the .app bundles linked in ./games.  Anything a
-game writes (settings, progress, logs) is stored under ./saves/<game name>/.
+Games are read directly from where they are installed: the Mac .app bundles
+linked in ./games, or the Windows game folders (found automatically in the
+usual install places, or given with --games).  Anything a game writes
+(settings, progress, logs) is stored under ./saves/<game name>/.
 The server listens on all network interfaces, so other devices on your local
 network can play too.  If cert.pem and key.pem (made with mkcert) are next to
 this file it serves HTTPS, otherwise plain HTTP.  It uses only the Python
@@ -24,10 +27,12 @@ import plistlib
 import posixpath
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import threading
 import urllib.parse
+import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -37,8 +42,23 @@ GAMES_DIR = ROOT / "games"
 SAVES_DIR = ROOT / "saves"
 WEB_DIR = ROOT / "web"
 CACHE_DIR = ROOT / ".cache"
-# macOS's built-in General MIDI sound bank (what native Mac apps play MIDI through)
-SOUNDBANK = Path("/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls")
+IS_WINDOWS = os.name == "nt"
+IS_MAC = sys.platform == "darwin"
+
+
+def find_soundbank() -> Path | None:
+    """The General MIDI sound bank the music is played with: a soundbank.sf2
+    or soundbank.dls next to this file if there is one, otherwise the one
+    built into the operating system (the one native apps play MIDI through)."""
+    candidates = [ROOT / "soundbank.sf2", ROOT / "soundbank.dls",
+                  Path("/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls")]
+    if IS_WINDOWS:
+        windir = Path(os.environ.get("SystemRoot") or os.environ.get("windir") or r"C:\Windows")
+        candidates.append(windir / "System32" / "drivers" / "gm.dls")
+    return next((p for p in candidates if p.is_file()), None)
+
+
+SOUNDBANK = find_soundbank()
 
 mimetypes.add_type("application/wasm", ".wasm")
 mimetypes.add_type("text/javascript", ".js")
@@ -46,36 +66,69 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 # ---------------------------------------------------------------- games
+# Folders the Windows games share with each other, one level above each game
+# folder ("pgm/../MUSIC").  The Mac bundles keep their own copies inside.
+SHARED_DIRS = ("MUSIC", "COMMONUI")
+
+
 class Game:
-    def __init__(self, bundle: Path):
-        self.bundle = bundle
-        self.name = bundle.name[:-4] if bundle.name.endswith(".app") else bundle.name
-        if self.name.endswith(" LIC"):
-            self.name = self.name[:-4]
-        self.resources = bundle / "Contents" / "Resources"
+    """One installed game: a Mac .app bundle, or a Windows game folder
+    (for example C:\\...\\Everett Kaser Software\\Sherlock)."""
+
+    def __init__(self, path: Path):
+        self.bundle = path
+        self.mac = path.suffix == ".app"
+        if self.mac:
+            self.name = path.name[:-4]
+            if self.name.endswith(" LIC"):
+                self.name = self.name[:-4]
+            self.resources = path / "Contents" / "Resources"
+        else:
+            self.name = path.name
+            self.resources = path
+        # lower-case name -> (real name, path) of shared folders that appear
+        # inside the game folder, so a game sees the same tree on both systems
+        self.shared: dict[str, tuple[str, Path]] = {}
+        if not self.mac:
+            here = _listing(path, False)
+            above = _listing(path.parent, False)
+            for d in SHARED_DIRS:
+                real = above.get(d.lower())
+                if d.lower() not in here and real and (path.parent / real).is_dir():
+                    self.shared[d.lower()] = (real, path.parent / real)
         self.engine = self._detect_engine()
         self.eks_name = self._read_eks_name()
 
     def _read_eks_name(self) -> str:
         """The name the native Mac app uses for its save folder (e.g. "MESH Hero Defiant")."""
+        if not self.mac:
+            return self.name
         try:
             with open(self.bundle / "Contents" / "Info.plist", "rb") as f:
                 return plistlib.load(f).get("EKSGameName") or self.name
         except (OSError, plistlib.InvalidFileException):
             return self.name
 
+    @property
+    def native_saves(self) -> Path:
+        """Where the native (non-browser) version of this game keeps its saves."""
+        if self.mac:
+            return Path.home() / "Library" / "Application Support" / "Everett Kaser Software" / self.eks_name
+        # Windows: Documents\<install folder name>\<game folder name>
+        return documents_folder() / self.bundle.parent.name / self.bundle.name
+
     def shown_paths(self) -> dict:
-        """Folder paths as the native Mac app reports them to the game.
+        """Folder paths as the native app reports them to the game.
         The MESH games use these to work out which game they are."""
-        home = Path.home()
         return {
-            "pgm": str(self.resources.resolve()) + "/",
-            "app": f"{home}/Library/Application Support/Everett Kaser Software/{self.eks_name}/",
+            "pgm": str(self.resources.resolve()) + os.sep,
+            "app": str(self.native_saves) + os.sep,
         }
 
     def _detect_engine(self) -> int:
+        main_ke = _listing(self.resources, False).get("main.ke", "MAIN.KE")
         try:
-            with open(self.resources / "MAIN.KE", "rb") as f:
+            with open(self.resources / main_ke, "rb") as f:
                 head = f.read(0xE0)
         except OSError:
             return 0
@@ -90,17 +143,110 @@ class Game:
         return SAVES_DIR / self.name
 
 
-def find_games() -> dict[str, Game]:
-    games = {}
-    if GAMES_DIR.is_dir():
-        for p in sorted(GAMES_DIR.iterdir()):
-            if p.suffix == ".app" and (p / "Contents" / "Resources").is_dir():
-                g = Game(p)
-                games[g.name] = g
+def documents_folder() -> Path:
+    """The user's Documents folder (on Windows it may have been moved, for
+    example into OneDrive, so ask Windows where it is)."""
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(260)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 and buf.value:  # CSIDL_PERSONAL
+                return Path(buf.value)
+        except (OSError, AttributeError):
+            pass
+    return Path.home() / "Documents"
+
+
+def windows_install_folders() -> list[Path]:
+    """Folders where the Windows games are probably installed: the folders the
+    installers registered with Windows, plus the usual default places."""
+    found: list[Path] = []
+    if not IS_WINDOWS:
+        return found
+    try:
+        import winreg
+        keys = [(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")]
+        for hive, key in keys:
+            try:
+                k = winreg.OpenKey(hive, key)
+            except OSError:
+                continue
+            with k:
+                for i in range(winreg.QueryInfoKey(k)[0]):
+                    try:
+                        with winreg.OpenKey(k, winreg.EnumKey(k, i)) as app:
+                            def val(n):
+                                try:
+                                    return str(winreg.QueryValueEx(app, n)[0])
+                                except OSError:
+                                    return ""
+                            if "kaser" not in (val("Publisher") + val("DisplayName")).lower():
+                                continue
+                            loc = val("InstallLocation") or val("DisplayIcon") or val("UninstallString")
+                            loc = loc.strip().strip('"').split('"')[0].split(",")[0]
+                            p = Path(loc)
+                            if p.suffix:          # a file inside the game folder
+                                p = p.parent
+                            if p.is_dir():
+                                found.append(p)
+                    except OSError:
+                        continue
+    except ImportError:
+        pass
+    for var in ("ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"):
+        base = os.environ.get(var)
+        if base:
+            found.append(Path(base) / "Everett Kaser Software")
+    found.append(Path(r"C:\Everett Kaser Software"))
+    return found
+
+
+def is_game(p: Path) -> bool:
+    if p.suffix == ".app":
+        return (p / "Contents" / "Resources").is_dir()
+    return p.is_dir() and "main.ke" in _listing(p, False)
+
+
+def find_games(extra: list[Path] | None = None) -> dict[str, Game]:
+    """Every game in games/, in the folders given with --games and in the
+    usual Windows install places.  Each folder may be a game itself, hold
+    games, or hold folders of games (one level deeper)."""
+    games: dict[str, Game] = {}
+    seen: set[Path] = set()
+
+    def add(p: Path):
+        try:
+            key = p.resolve()
+        except OSError:
+            return
+        if key in seen:
+            return
+        seen.add(key)
+        g = Game(p)
+        if g.name not in games:
+            games[g.name] = g
+
+    def scan(folder: Path, depth: int):
+        if is_game(folder):
+            return add(folder)
+        if depth == 0 or not folder.is_dir():
+            return
+        try:
+            entries = sorted(folder.iterdir(), key=lambda q: q.name.lower())
+        except OSError:
+            return
+        for p in entries:
+            if not p.name.startswith(".") and (p.suffix == ".app" or p.is_dir()):
+                scan(p, depth - 1)
+
+    for folder in [GAMES_DIR, *(extra or []), *windows_install_folders()]:
+        scan(folder, 2)
     return games
 
 
-GAMES = find_games()
+GAMES: dict[str, Game] = {}
 
 
 # ------------------------------------------------------- path resolution
@@ -131,7 +277,8 @@ def resolve(game: Game, kpath: str, must_exist: bool = True) -> Path | None:
 
     pgm/ is the game's Resources folder (read-only).  The Windows layout keeps
     MUSIC and COMMONUI one level above the game; the Mac bundles keep them
-    inside Resources, so "pgm/../X" means Resources/X.
+    inside Resources, so "pgm/../X" means Resources/X.  For a Windows game
+    folder those shared folders are shown inside it, to match the Mac.
 
     app/ is the player's save folder; "app/../X" is shared by all games.
     """
@@ -144,17 +291,23 @@ def resolve(game: Game, kpath: str, must_exist: bool = True) -> Path | None:
     else:
         return None
 
+    shared = {path: real for real, path in game.shared.values()} if root_name == "pgm" else {}
     cur = root
     parts = [p for p in rest.split("/") if p not in ("", ".")]
     for i, part in enumerate(parts):
         if part == "..":
-            if cur != top:
+            if cur in shared:           # a shared folder's parent is the game folder
+                cur = game.resources
+            elif cur != top:
                 cur = cur.parent
             continue
         if part.startswith(".") or "\0" in part:
             return None
-        real = _listing(cur, cache).get(part.lower())
         last = i == len(parts) - 1
+        if cur == game.resources and root_name == "pgm" and part.lower() in game.shared:
+            cur = game.shared[part.lower()][1]
+            continue
+        real = _listing(cur, cache).get(part.lower())
         if real is None:
             if must_exist:
                 return None
@@ -162,24 +315,25 @@ def resolve(game: Game, kpath: str, must_exist: bool = True) -> Path | None:
         cur = cur / real
         if not last and must_exist and not cur.is_dir():
             return None
-    # never escape the allowed tree
-    try:
-        cur.resolve().relative_to(top.resolve())
-    except ValueError:
-        if root_name == "pgm":
-            # games/ entries are symlinks to the real bundles; check against those
+    # never escape the allowed tree.  The walk above can't climb out by name;
+    # also accept links the game's own files make (games/ entries are links).
+    allowed = [top] if root_name == "app" else [game.resources, *shared]
+    for a in allowed:
+        for c, t in ((cur, a), (cur.resolve(), a.resolve())):
             try:
-                cur.resolve().relative_to(game.resources.resolve())
+                c.relative_to(t)
+                return cur
             except ValueError:
-                return None
-        else:
-            return None
-    return cur
+                pass
+    return None
 
 
 # ------------------------------------------------------------- icons
 def icon_png(game: Game) -> Path | None:
-    """Convert the bundle's AppIcon.icns to PNG with macOS 'sips' (cached)."""
+    """The game's icon: the Mac bundle's AppIcon.icns converted to PNG with
+    macOS 'sips', or the icon inside a Windows game's .exe (cached)."""
+    if not game.mac:
+        return exe_icon(game)
     icns = game.resources / "AppIcon.icns"
     if not icns.exists():
         return None
@@ -194,41 +348,138 @@ def icon_png(game: Game) -> Path | None:
     return out if out.exists() else None
 
 
+def exe_icon(game: Game) -> Path | None:
+    """Copy the first icon out of a Windows game's .exe into a .ico file."""
+    out = CACHE_DIR / "icons" / f"{game.name}.ico"
+    if out.exists():
+        return out
+    exes = [p for p in game.resources.iterdir()
+            if p.suffix.lower() == ".exe" and not p.name.lower().startswith("unins")]
+    # prefer the one named after the game, then the biggest
+    exes.sort(key=lambda p: (p.stem.lower() != game.name.lower(), -p.stat().st_size))
+    for exe in exes:
+        try:
+            ico = ico_from_exe(exe.read_bytes())
+        except (OSError, ValueError, IndexError, struct.error):
+            ico = None
+        if ico:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(ico)
+            return out
+    return None
+
+
+def ico_from_exe(data: bytes) -> bytes | None:
+    """Rebuild a .ico file from an .exe's RT_GROUP_ICON / RT_ICON resources."""
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[pe:pe + 4] != b"PE\0\0":
+        return None
+    nsect, opt_size = struct.unpack_from("<H12xH", data, pe + 6)
+    opt = pe + 24
+    magic = struct.unpack_from("<H", data, opt)[0]
+    dirs = opt + (96 if magic == 0x10B else 112)
+    res_rva = struct.unpack_from("<I", data, dirs + 2 * 8)[0]
+    if not res_rva:
+        return None
+    sections = []
+    for i in range(nsect):
+        vsize, va, rawsize, raw = struct.unpack_from("<IIII", data, opt + opt_size + 40 * i + 8)
+        sections.append((va, max(vsize, rawsize), raw))
+
+    def at(rva):
+        for va, size, raw in sections:
+            if va <= rva < va + size:
+                return raw + rva - va
+        raise ValueError("bad RVA")
+
+    base = at(res_rva)
+
+    def entries(off):
+        named, ids = struct.unpack_from("<HH", data, base + off + 12)
+        for i in range(named + ids):
+            name, target = struct.unpack_from("<II", data, base + off + 16 + 8 * i)
+            yield name, target
+
+    def leaf(target):
+        while target & 0x80000000:        # descend to the first language
+            target = next(entries(target & 0x7FFFFFFF))[1]
+        rva, size = struct.unpack_from("<II", data, base + target)
+        return data[at(rva):at(rva) + size]
+
+    types = dict(entries(0))
+    if 14 not in types or 3 not in types:          # RT_GROUP_ICON, RT_ICON
+        return None
+    icons = {name: target for name, target in entries(types[3] & 0x7FFFFFFF)}
+    group = leaf(next(entries(types[14] & 0x7FFFFFFF))[1])
+    count = struct.unpack_from("<H", group, 4)[0]
+    head, images = [], []
+    for i in range(count):
+        w, h, colors, _, planes, bits, _, icon_id = struct.unpack_from("<BBBBHHIH", group, 6 + 14 * i)
+        if icon_id not in icons:
+            continue
+        img = leaf(icons[icon_id])
+        head.append(struct.pack("<BBBBHHII", w, h, colors, 0, planes, bits, len(img), 0))
+        images.append(img)
+    if not images:
+        return None
+    offset = 6 + 16 * len(images)
+    fixed = []
+    for h_, img in zip(head, images):
+        fixed.append(h_[:12] + struct.pack("<I", offset))
+        offset += len(img)
+    return struct.pack("<HHH", 0, 1, len(images)) + b"".join(fixed) + b"".join(images)
+
+
 # ---------------------------------------------------- offline downloads
 # A browser can keep a copy of a game so it plays without this server.  The
 # game's Resources folder is sent as one "pack": an index of files followed by
 # their contents back to back.  Files the interpreter never reads are left out.
 PACK_SKIP = {"appicon.icns", "assets.car"}
-_pack_cache: dict[str, tuple[float, dict]] = {}
+PACK_SKIP_EXT = {".exe", ".dll"}   # Windows programs: the browser has its own interpreter
+_pack_cache: dict[str, tuple[list, dict, list[Path]]] = {}
 
 
 def pack_index(game: Game) -> dict:
     """Files and folders of the game, in pack order, plus a version string."""
+    return _pack(game)[0]
+
+
+def _pack(game: Game) -> tuple[dict, list[Path]]:
+    """The pack index, and the real location of each file in it."""
     key = game.name
-    try:
-        stamp = game.resources.stat().st_mtime
-    except OSError:
-        stamp = 0
+    trees = [("", game.resources), *((real + "/", path) for real, path in game.shared.values())]
+    stamp = []
+    for _, t in trees:
+        try:
+            stamp.append(t.stat().st_mtime)
+        except OSError:
+            stamp.append(0)
     hit = _pack_cache.get(key)
     if hit and hit[0] == stamp:
-        return hit[1]
-    files, dirs = [], []
-    top = game.resources.resolve()
-    for d, subdirs, names in os.walk(top, followlinks=True):
-        subdirs[:] = sorted(n for n in subdirs if not n.startswith("."))
-        rel = Path(d).relative_to(top).as_posix()
-        rel = "" if rel == "." else rel + "/"
-        if rel:
-            dirs.append([rel[:-1], int(os.stat(d).st_mtime)])
-        for n in sorted(names):
-            if n.startswith(".") or n.lower() in PACK_SKIP:
-                continue
-            st = os.stat(os.path.join(d, n))
-            files.append([rel + n, st.st_size, int(st.st_mtime)])
+        return hit[1], hit[2]
+    files, dirs, paths = [], [], []
+    for prefix, tree in trees:
+        top = tree.resolve()
+        if prefix:
+            dirs.append([prefix[:-1], int(os.stat(top).st_mtime)])
+        for d, subdirs, names in os.walk(top, followlinks=True):
+            subdirs[:] = sorted(n for n in subdirs if not n.startswith("."))
+            rel = Path(d).relative_to(top).as_posix()
+            rel = prefix + ("" if rel == "." else rel + "/")
+            if rel != prefix:
+                dirs.append([rel[:-1], int(os.stat(d).st_mtime)])
+            for n in sorted(names):
+                if (n.startswith(".") or n.lower() in PACK_SKIP
+                        or os.path.splitext(n)[1].lower() in PACK_SKIP_EXT):
+                    continue
+                full = os.path.join(d, n)
+                st = os.stat(full)
+                files.append([rel + n, st.st_size, int(st.st_mtime)])
+                paths.append(Path(full))
     h = hashlib.sha1(json.dumps([files, dirs]).encode()).hexdigest()[:16]
     index = {"version": h, "total": sum(f[1] for f in files), "files": files, "dirs": dirs}
-    _pack_cache[key] = (stamp, index)
-    return index
+    _pack_cache[key] = (stamp, index, paths)
+    return index, paths
 
 
 def save_files(game: Game) -> list[dict]:
@@ -412,7 +663,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/play":
             return self.send_file(WEB_DIR / "play.html")
         if path == "/sw.js":
-            js = (WEB_DIR / "sw.js").read_text().replace("__VERSION__", web_version())
+            js = (WEB_DIR / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", web_version())
             return self.send_bytes(js.encode(), "text/javascript")
         if path == "/manifest.webmanifest":
             return self.send_file(WEB_DIR / "manifest.webmanifest")
@@ -435,7 +686,7 @@ class Handler(BaseHTTPRequestHandler):
             p = icon_png(g) if g else None
             return self.send_file(p) if p else self.not_found()
         if path == "/api/soundbank":
-            return self.send_file(SOUNDBANK)
+            return self.send_file(SOUNDBANK) if SOUNDBANK else self.not_found()
         if path.startswith("/api/info/"):
             g = GAMES.get(path[len("/api/info/"):])
             return self.send_json({"name": g.name, "engine": g.engine, **g.shown_paths()}) if g else self.not_found()
@@ -453,7 +704,7 @@ class Handler(BaseHTTPRequestHandler):
         g = GAMES.get(name)
         if g is None or not g.engine:
             return self.not_found()
-        index = pack_index(g)
+        index, paths = _pack(g)
         if what == "index":
             return self.send_json({"name": g.name, "engine": g.engine, **g.shown_paths(), **index})
         if what != "data":
@@ -467,9 +718,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command == "HEAD":
             return
-        top = g.resources.resolve()
-        for rel, size, _ in index["files"]:
-            with open(top / rel, "rb") as f:
+        for (rel, size, _), real in zip(index["files"], paths):
+            with open(real, "rb") as f:
                 left = size
                 while left > 0:
                     chunk = f.read(min(left, 1 << 20))
@@ -519,11 +769,15 @@ class Handler(BaseHTTPRequestHandler):
             if not d or not d.is_dir():
                 return self.send_json([])
             entries = []
-            for name in sorted(os.listdir(d), key=str.lower):
+            names = os.listdir(d)
+            if d == game.resources and kpath.startswith("pgm"):
+                names += [real for real, _ in game.shared.values()]
+            for name in sorted(names, key=str.lower):
                 if name.startswith("."):
                     continue
                 if fnmatch.fnmatch(name.lower(), pattern.lower()) or pattern in ("*.*", "*"):
-                    entries.append({"name": name, "dir": (d / name).is_dir()})
+                    is_dir = name.lower() in game.shared if d == game.resources else False
+                    entries.append({"name": name, "dir": is_dir or (d / name).is_dir()})
             return self.send_json(entries)
 
         if method == "PUT" and op == "file":
@@ -576,8 +830,14 @@ def main():
     ap.add_argument("--cert", default=str(ROOT / "cert.pem"), help="TLS certificate (default: cert.pem)")
     ap.add_argument("--key", default=str(ROOT / "key.pem"), help="TLS private key (default: key.pem)")
     ap.add_argument("--http", action="store_true", help="serve plain HTTP even if a certificate exists")
-    ap.add_argument("--local", action="store_true", help="only accept connections from this Mac")
+    ap.add_argument("--local", action="store_true", help="only accept connections from this computer")
+    ap.add_argument("--games", action="append", default=[], metavar="FOLDER",
+                    help="another folder holding games (e.g. where the Windows games are installed); "
+                         "may be given more than once")
     args = ap.parse_args()
+
+    global GAMES
+    GAMES = find_games([Path(g).expanduser() for g in args.games])
 
     if not (WEB_DIR / "kint5.wasm").exists():
         sys.exit("web/kint5.wasm is missing - build it first with: engine/build.sh")
@@ -597,6 +857,12 @@ def main():
     scheme = "https" if use_tls else "http"
     url = f"{scheme}://localhost:{args.port}/"
     print(f"Found {len(GAMES)} games.  Serving on {url}  (Ctrl+C to stop)")
+    if not GAMES:
+        print("  No games found.  Tell the server where they are installed, for example:\n"
+              '    py server.py --games "C:\\Program Files (x86)\\Everett Kaser Software"')
+    if not SOUNDBANK:
+        print("  No General MIDI sound bank found, so there will be no music "
+              "(put one next to server.py as soundbank.sf2).")
     lan = None if args.local else lan_address()
     if lan:
         print(f"Other devices on your network: {scheme}://{lan}:{args.port}/")
@@ -604,7 +870,10 @@ def main():
         if name:
             print(f"   or, by name (stays the same if the address changes): {scheme}://{name}:{args.port}/")
     if args.open:
-        subprocess.run(["open", "-a", "Google Chrome", url], check=False)
+        if IS_MAC:
+            subprocess.run(["open", "-a", "Google Chrome", url], check=False)
+        else:
+            webbrowser.open(url)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -105,7 +105,7 @@ html { scroll-behavior: smooth; }
 <header class="wrap">
   <p class="eyebrow">Everett Kaser games · browser port</p>
   <h1>How Kaser Web works</h1>
-  <p class="lede">Your Kaser games run in Chrome and Safari, on the Mac, the iPad and the iPhone, using Everett's own interpreter. This page follows each piece, from the game file on your disk to the pixels and sounds in the browser.</p>
+  <p class="lede">Your Kaser games run in Chrome and Safari, on the Mac, the iPad and the iPhone, using Everett's own interpreter. The server can also run on a Windows PC with the Windows versions of the games, and any device with a modern browser can play, Android phones and tablets included. This page follows each piece, from the game file on your disk to the pixels and sounds in the browser.</p>
   <ul class="toc">
     <li><a href="#big-picture">The big picture</a></li>
     <li><a href="#games">What a Kaser game is</a></li>
@@ -124,7 +124,7 @@ html { scroll-behavior: smooth; }
 <main>
 <section class="wrap">
   <h2 id="big-picture">The big picture</h2>
-  <p>There are two halves. On the <strong>Mac</strong>, a small Python program (<code>server.py</code>) reads the games you own and keeps your saves. In the <strong>browser</strong>, a set of web pages runs each game with Everett's KINT interpreter, translated to WebAssembly, a form of machine code that browsers can run at near-native speed.</p>
+  <p>There are two halves. On the <strong>Mac</strong> (or a Windows PC), a small Python program (<code>server.py</code>) reads the games you own and keeps your saves. In the <strong>browser</strong>, a set of web pages runs each game with Everett's KINT interpreter, translated to WebAssembly, a form of machine code that browsers can run at near-native speed.</p>
   <p>The server never runs any game code. It only hands out files and stores what the games write. All the work of running a game happens inside the browser, which is why a game you've downloaded keeps working on the iPad with the Mac switched off.</p>
 </section>
 
@@ -221,7 +221,7 @@ html { scroll-behavior: smooth; }
 
 <section class="wrap">
   <h2 id="games">What a Kaser game is</h2>
-  <p>Everett writes each game in C, but it isn't compiled for Windows or the Mac. He ported a C compiler to produce instructions for his own <strong>virtual CPU</strong>, and his assembler and linker turn those into a file called <code>MAIN.KE</code>. A separate program, the <strong>KINT interpreter</strong>, reads <code>MAIN.KE</code> and carries out its instructions, much as a Java runtime runs Java bytecode. The Mac app you bought is that interpreter packaged with <code>MAIN.KE</code> and the game's pictures (BMP, JPG), sounds (WAV), music (MID), fonts, dialog layouts (<code>*.UI</code>) and puzzle files, all inside <code>Contents/Resources</code>.</p>
+  <p>Everett writes each game in C, but it isn't compiled for Windows or the Mac. He ported a C compiler to produce instructions for his own <strong>virtual CPU</strong>, and his assembler and linker turn those into a file called <code>MAIN.KE</code>. A separate program, the <strong>KINT interpreter</strong>, reads <code>MAIN.KE</code> and carries out its instructions, much as a Java runtime runs Java bytecode. The Mac app you bought is that interpreter packaged with <code>MAIN.KE</code> and the game's pictures (BMP, JPG), sounds (WAV), music (MID), fonts, dialog layouts (<code>*.UI</code>) and puzzle files, all inside <code>Contents/Resources</code>. The Windows version is the same interpreter as an <code>.exe</code> in a plain game folder, with the same files beside it.</p>
   <p>That design is what made the port practical. Port the interpreter once, and every game built on it works, with no changes to the games themselves.</p>
   <div class="cols">
     <div class="card"><h4>KINT 5 · 37 games</h4><p>Sherlock, the Knarly series, Hero's Hearts and the rest. Their <code>MAIN.KE</code> starts with the letters <code>KASMB</code>. They run on the KINT 1–5 interpreter, whose C source came with Everett's KINT 5 kit.</p></div>
@@ -263,20 +263,20 @@ html { scroll-behavior: smooth; }
   <div class="cols">
     <div class="card"><h4>Screen</h4><p>The interpreter draws into its own pixel buffer, as it did on Windows. The platform layer tracks which rectangles changed and posts only those to the page, which paints them onto a <code>&lt;canvas&gt;</code>. The canvas fills the window. On a touch screen it can be magnified with two fingers; the page shows square pixels when they line up with the screen's and smooths them when shrunk, so text stays readable.</p></div>
     <div class="card"><h4>Sound effects</h4><p>WAV files, from disk or built into the game's memory, are decoded by the browser's Web Audio system and played. Browsers allow sound only after you've interacted with the page, which is why sound starts with your first click or tap.</p></div>
-    <div class="card"><h4>Music</h4><p>The games' background music is MIDI. Browsers can't play MIDI themselves, so <strong>SpessaSynth</strong>, a software synthesizer, plays it with the General MIDI instrument bank built into macOS (<code>gs_instruments.dls</code>). The server provides that bank at <code>/api/soundbank</code>, and the iPad keeps a copy for offline play. When a song ends, the game is told, as Windows would tell it, so it can start the next one.</p></div>
+    <div class="card"><h4>Music</h4><p>The games' background music is MIDI. Browsers can't play MIDI themselves, so <strong>SpessaSynth</strong>, a software synthesizer, plays it with the General MIDI instrument bank built into the server's computer: <code>gs_instruments.dls</code> on macOS, <code>gm.dls</code> on Windows. The server provides that bank at <code>/api/soundbank</code>, and the iPad keeps a copy for offline play. When a song ends, the game is told, as Windows would tell it, so it can start the next one.</p></div>
   </div>
 
   <h2 id="files">Files and saves</h2>
-  <p>KINT games see two folders. <code>pgm/</code> is the game's own folder (read-only; on the Mac, the <code>.app</code>'s <code>Contents/Resources</code>). <code>app/</code> is its save folder. Names are matched without regard to case, as on Windows, because the games were written for Windows.</p>
+  <p>KINT games see two folders. <code>pgm/</code> is the game's own folder (read-only; on the Mac, the <code>.app</code>'s <code>Contents/Resources</code>; on Windows, the game's install folder, with the <code>MUSIC</code> and <code>COMMONUI</code> folders that Windows games share from the folder above shown inside it, so a game sees the same files either way). <code>app/</code> is its save folder. Names are matched without regard to case, as on Windows, because the games were written for Windows.</p>
   <p>The worker's file calls go through <code>web/fs.js</code>, which has two interchangeable back ends:</p>
   <div class="cols">
     <div class="card"><span class="path">serverFS</span><h4>Straight from the Mac</h4><p>Each file call becomes a synchronous request to <code>/api/g/&lt;game&gt;/…</code>: read, stat, list, write, make or remove a folder. Saves land in <code>saves/&lt;game&gt;/</code> on the Mac. Files the game has already read are cached, so each one is fetched only once per session.</p></div>
     <div class="card"><span class="path">localFS</span><h4>From this device</h4><p>Reads come from the game's pack file, already loaded. Writes are kept in memory, so the game never waits, and the page saves them to IndexedDB in the background. Before the window closes, the page waits until every save has been stored.</p></div>
   </div>
-  <p>Saves from the native Mac apps (in <code>~/Library/Application Support/Everett Kaser Software/</code>) can be copied into <code>saves/</code> once with <code>tools/import_native_saves.py</code>. From then on the two are separate. Playing in the browser doesn't change the native apps' saves, and the other way round.</p>
+  <p>Saves from the native apps (on the Mac in <code>~/Library/Application Support/Everett Kaser Software/</code>, on Windows in <code>Documents\Everett Kaser Software\</code>) can be copied into <code>saves/</code> once with <code>tools/import_native_saves.py</code>. From then on the two are separate. Playing in the browser doesn't change the native apps' saves, and the other way round.</p>
 
   <h2 id="server">The server</h2>
-  <p><code>server.py</code> uses only Python's standard library, so there's nothing to install. When it starts, it looks in <code>games/</code> for apps containing a <code>MAIN.KE</code>, works out which interpreter each needs from the file's first bytes, and listens on port 8765. Each connection gets its own thread, so a slow iPad never holds up the Mac.</p>
+  <p><code>server.py</code> uses only Python's standard library, so there's nothing to install. When it starts, it looks in <code>games/</code> for Mac apps containing a <code>MAIN.KE</code> (on Windows, in the folders where the games are installed), works out which interpreter each needs from the file's first bytes, and listens on port 8765. Each connection gets its own thread, so a slow iPad never holds up the Mac.</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Address</th><th>What it does</th></tr></thead>
@@ -285,12 +285,12 @@ html { scroll-behavior: smooth; }
       <tr><td><code>/play?g=…</code></td><td>The game page.</td></tr>
       <tr><td><code>/web/…</code></td><td>The app's own files: scripts, the interpreters, SpessaSynth.</td></tr>
       <tr><td><code>/api/games</code></td><td>The game list, with each game's version.</td></tr>
-      <tr><td><code>/api/icon/…</code> <code>/api/info/…</code></td><td>A game's icon (taken from its <code>.app</code>) and details.</td></tr>
+      <tr><td><code>/api/icon/…</code> <code>/api/info/…</code></td><td>A game's icon (taken from its <code>.app</code>, or its <code>.exe</code> on Windows) and details.</td></tr>
       <tr><td><code>/api/g/&lt;game&gt;/…</code></td><td>File access for a running game: read, write, list, stat, folders.</td></tr>
       <tr><td><code>/api/pack/&lt;game&gt;/index</code></td><td>The list of files in a game, their sizes and a version fingerprint.</td></tr>
       <tr><td><code>/api/pack/&lt;game&gt;/data</code></td><td>All of a game's files streamed back to back, for downloading. If the game changed since the index was read, it answers "game changed" instead.</td></tr>
       <tr><td><code>/api/saves/&lt;game&gt;</code></td><td>Your saves for a game, copied to the device on its first download.</td></tr>
-      <tr><td><code>/api/soundbank</code></td><td>The macOS General MIDI instrument bank for music.</td></tr>
+      <tr><td><code>/api/soundbank</code></td><td>The computer's General MIDI instrument bank for music.</td></tr>
       <tr><td><code>/sw.js</code></td><td>The service worker, stamped with a fingerprint of everything in <code>web/</code> so browsers notice updates.</td></tr>
     </tbody>
   </table>
@@ -308,7 +308,7 @@ html { scroll-behavior: smooth; }
 
   <h2 id="network">Network and HTTPS</h2>
   <h3>Listening</h3>
-  <p>The server listens on every network connection the Mac has, over both IPv4 and IPv6, so an iPad on the same Wi-Fi can reach it at the Mac's address, for example <code>https://192.168.1.20:8765</code>. The server prints the right address when it starts. The macOS firewall must allow Python to accept incoming connections.</p>
+  <p>The server listens on every network connection the Mac has, over both IPv4 and IPv6, so an iPad on the same Wi-Fi can reach it at the Mac's address, for example <code>https://192.168.1.20:8765</code>. The server prints the right address when it starts. The firewall (macOS or Windows) must allow Python to accept incoming connections.</p>
   <h3>The certificate</h3>
   <p>HTTPS needs a certificate the browser trusts. <strong>mkcert</strong> made a private certificate authority on your Mac, a "root" certificate that exists only on your machines, and used it to sign <code>cert.pem</code> for your Mac's addresses. A device trusts the server only if it trusts that root. On an iPad, that means installing the <code>rootCA.pem</code> profile, then turning on full trust under Settings → General → About → Certificate Trust Settings.</p>
   <p>Skipping the full-trust step causes a confusing symptom. The iPad refuses the server's certificate, but the launcher runs from the service worker's copy, so no warning appears. The page just loads forever, then says it can't reach the game server. Once the root is trusted, every certificate from the same mkcert is accepted automatically, including new ones made when the Mac's address changes.</p>

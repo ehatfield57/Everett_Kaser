@@ -1,40 +1,31 @@
 #!/usr/bin/env python3
 """
-Copy saves from the native Mac apps into the browser version.
+Copy saves from the native games into the browser version.
 
-The Mac apps keep their files in
-    ~/Library/Application Support/Everett Kaser Software/<EKSGameName>/
+The native games keep their files in
+    Mac:     ~/Library/Application Support/Everett Kaser Software/<EKSGameName>/
+    Windows: Documents\\<install folder name>\\<game folder name>\\
+             (e.g. Documents\\Everett Kaser Software\\Sherlock\\)
 and the browser version keeps them in
     saves/<game name>/
 with the same layout.  This copies files across without overwriting anything
 that already exists in saves/ (use --overwrite to replace, after making a
 backup copy of each replaced file as <name>.bak).  The native files are never
-changed.
+changed.  Games are found the same way server.py finds them.
 
     python3 tools/import_native_saves.py            # copy
     python3 tools/import_native_saves.py --dry-run  # just show what would happen
     python3 tools/import_native_saves.py --overwrite --game Sherlock
+    py tools\\import_native_saves.py --games "D:\\Games\\Everett Kaser Software"   # Windows
 """
 import argparse
-import plistlib
 import shutil
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-NATIVE = Path.home() / "Library" / "Application Support" / "Everett Kaser Software"
-
-
-def games():
-    for bundle in sorted((ROOT / "games").iterdir()):
-        if bundle.suffix != ".app":
-            continue
-        name = bundle.name[:-4].removesuffix(" LIC")
-        try:
-            with open(bundle / "Contents" / "Info.plist", "rb") as f:
-                eks = plistlib.load(f).get("EKSGameName") or name
-        except (OSError, plistlib.InvalidFileException):
-            eks = name
-        yield name, eks
+sys.path.insert(0, str(ROOT))
+import server  # noqa: E402  (game discovery and native save locations)
 
 
 def main():
@@ -42,17 +33,19 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="show what would be copied")
     ap.add_argument("--overwrite", action="store_true", help="replace existing browser saves (keeps .bak copies)")
     ap.add_argument("--game", help="only this game (name as shown in the launcher)")
+    ap.add_argument("--games", action="append", default=[], metavar="FOLDER",
+                    help="another folder holding games, as for server.py")
     args = ap.parse_args()
 
-    for name, eks in games():
+    for name, game in server.find_games([Path(g).expanduser() for g in args.games]).items():
         if args.game and args.game.lower() != name.lower():
             continue
-        src = NATIVE / eks
+        src = game.native_saves
         if not src.is_dir():
             continue
         copied = kept = 0
         for f in src.rglob("*"):
-            if f.is_dir() or f.name == ".DS_Store":
+            if f.is_dir() or f.name in (".DS_Store", "desktop.ini"):
                 continue
             dst = ROOT / "saves" / name / f.relative_to(src)
             if dst.exists() and not args.overwrite:

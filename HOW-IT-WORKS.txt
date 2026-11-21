@@ -2,6 +2,8 @@ HOW KASER WEB WORKS
 ===================
 
 A short summary of how your Everett Kaser games run in Chrome and Safari.
+The server runs on a Mac or a Windows PC; any device with a modern
+browser can play (Mac, Windows, iPad, iPhone, Android).
 For the full explanation, with a diagram, open HOW-IT-WORKS.html in a
 browser (double-click it in Finder).
 
@@ -14,7 +16,8 @@ CPU, and his assembler and linker turn those into a file called MAIN.KE.
 A separate program, the KINT interpreter, reads MAIN.KE and carries out
 its instructions. Each Mac app is that interpreter bundled with the
 game's MAIN.KE and its pictures, sounds, music, fonts and puzzles
-(inside Contents/Resources).
+(inside Contents/Resources). The Windows version is the same interpreter
+as an .exe in a plain game folder, with the same files beside it.
 
 37 games use KINT 5 (MAIN.KE starts with "KASMB"). Crocotile, Lair of
 Moriarty and Occam's Quilt use KINT 6, a newer interpreter.
@@ -65,14 +68,15 @@ Screen, sound and music
   - Sound effects: WAV files, played with the browser's Web Audio.
     Browsers allow sound only after your first click or tap.
   - Music: the games' MIDI music is played by SpessaSynth, a software
-    synthesizer, using the General MIDI instruments built into macOS
-    (gs_instruments.dls).
+    synthesizer, using the General MIDI instruments built into the
+    server's computer (gs_instruments.dls on macOS, gm.dls on Windows).
 
 
 server.py only hands out files
 ------------------------------
 server.py uses only Python's standard library. It:
-  - finds the games linked in games/ and works out which interpreter each
+  - finds the games (Mac apps linked in games/, or the Windows game
+    folders where they're installed) and works out which interpreter each
     one needs,
   - serves the launcher, the game page and the game files,
   - stores everything the games write in saves/<game name>/,

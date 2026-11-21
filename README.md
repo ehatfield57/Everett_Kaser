@@ -5,6 +5,11 @@ own program files (`MAIN.KE`) are run by Everett's KINT 5 and KINT 6
 interpreters, compiled to WebAssembly, with a small local Python server
 supplying the game files and storing your saves.
 
+The server runs on a Mac (using the Mac versions of the games) or on a
+Windows PC (using the Windows versions; see [Running on Windows](#running-on-windows)).
+Any device with a modern browser can then play: the computer itself, an
+iPad or iPhone, an Android phone or tablet, or another computer.
+
 All 40 games work: 37 on KINT 5, plus Crocotile, Lair of Moriarty and
 Occam's Quilt on KINT 6.
 
@@ -64,9 +69,54 @@ Server options:
 
 - `--port 9000` uses another port.
 - `--verbose` logs every file request, which is handy if a game misbehaves.
-- `--local` accepts connections from this Mac only.
+- `--local` accepts connections from this computer only.
+- `--games FOLDER` also looks for games in that folder (it can be given more
+  than once). The folder can be a game, hold games, or hold folders of games.
 - `--http` serves plain HTTP even if a certificate exists.
 - `--cert` and `--key` point at a certificate other than `cert.pem` and `key.pem`.
+
+## Running on Windows
+
+The server also runs on Windows, using the Windows versions of the games
+you've installed. Nothing in the games or your Windows installation is
+changed.
+
+1. Install Python 3 from <https://www.python.org/downloads/>. During
+   installation, tick **Add python.exe to PATH**.
+2. Put this folder anywhere you like, for example in Documents.
+3. Double-click **`start-windows.bat`**. It starts the server and opens the
+   game list in your browser. Keep its window open while you play; close it
+   to stop the server.
+
+If Windows Firewall asks whether Python may communicate on networks, allow
+it on **private networks** if you want to play from other devices (a phone or
+tablet); otherwise you can say no.
+
+**Where it looks for games:** the folders the Kaser installers registered
+with Windows, plus `Program Files\Everett Kaser Software` and
+`Program Files (x86)\Everett Kaser Software`. If your games are somewhere
+else, it says "No games found" when it starts. Edit `start-windows.bat` in
+Notepad and add the folder to the `server.py` line, for example:
+
+```
+%PY% server.py --open --games "D:\Games\Everett Kaser Software" %*
+```
+
+Give the folder that holds the game folders. The Windows games keep their
+shared `MUSIC` and `COMMONUI` folders there, next to the game folders.
+
+**Music** uses the General MIDI instruments built into Windows
+(`C:\Windows\System32\drivers\gm.dls`).
+
+**Your progress** from the Windows games (kept in
+`Documents\Everett Kaser Software\<game>`) can be copied in, as described in
+[Your saves](#your-saves): run `py tools\import_native_saves.py` in a Command
+Prompt in this folder.
+
+**HTTPS for other devices:** mkcert works on Windows too. Install it (for
+example `winget install FiloSottile.mkcert`), then run the mkcert commands in
+the next section in a Command Prompt in this folder, using your PC's name and
+address. The address for other devices is printed when the server starts.
 
 ## Playing on other devices
 
@@ -111,7 +161,16 @@ warning. The file to install is `rootCA.pem`, in the folder that
   4. Close and reopen the browser. This covers both Chrome and Safari.
 - **Another Mac:** open `rootCA.pem` in Keychain Access, add it to the System
   keychain, and set it to "Always Trust".
-- **Windows / Android:** import it as a trusted root certificate authority.
+- **Android:** copy `rootCA.pem` to the phone or tablet (by email, USB or a
+  cloud drive), then open Settings → **Security** (or Security & privacy) →
+  More security settings → **Encryption & credentials** → **Install a
+  certificate** → **CA certificate**, accept the warning, and pick the file.
+  The exact menu names vary by maker; searching Settings for "certificate"
+  finds it. Chrome trusts it after that.
+- **Windows:** double-click `rootCA.pem` (rename it to `rootCA.crt` first if
+  Windows doesn't open it), choose **Install Certificate**, **Current User**,
+  **Place all certificates in the following store**, and pick **Trusted Root
+  Certification Authorities**. Restart the browser.
 
 Keep `rootCA-key.pem` (in the same folder) on this Mac only, and never share
 it. `key.pem` is also private; `.gitignore` keeps both `.pem` files out of git.
@@ -180,12 +239,15 @@ save folder, as the Mac versions do. These are caches and are safe to delete.
 
 ## Adding a game
 
-The launcher lists every `.app` bundle in `games/`. These are links to the
-installed apps, so to add one:
+On a Mac, the launcher lists every `.app` bundle in `games/`. These are links
+to the installed apps, so to add one:
 
 ```
 ln -s "/path/to/Some Game LIC.app" games/
 ```
+
+On Windows, install the game as usual; the server finds it in the same
+places as your other games (or use `--games`, above).
 
 Then restart the server. The interpreter (KINT 5 or 6) is chosen automatically
 from the game's `MAIN.KE` file.
@@ -216,7 +278,8 @@ Chrome tab (web/play.html, play.js)        Web Worker (web/worker.js)
                                              platform layer
                                                     |  file reads/writes
                                                     v
-                              server.py: game files from games/*.app,
+                              server.py: game files from games/*.app
+                                         (Mac) or the Windows game folders,
                                          your files in saves/
                               or, for a game kept on the device (offline):
                                          its files in the browser's private
@@ -237,8 +300,10 @@ Chrome tab (web/play.html, play.js)        Web Worker (web/worker.js)
 | `tools/cdp.mjs` | Drives a headless Chrome for automated checks (see below) |
 | `tools/import_native_saves.py`, `extract_kint.py` | Helpers described above |
 
-Music is played by SpessaSynth using macOS's built-in General MIDI sound bank
-(`gs_instruments.dls`), the same one native Mac apps use.
+Music is played by SpessaSynth using the General MIDI sound bank built into
+the server's computer: `gs_instruments.dls` on macOS (the one native Mac apps
+use) or `gm.dls` on Windows. To use a different one (or on Linux, which has
+none built in), put a `soundbank.sf2` or `soundbank.dls` next to `server.py`.
 
 ## Checking that a game starts
 
@@ -269,10 +334,15 @@ can change your saves.
 - **Typing the address without `https://`** is fine: the server forwards
   plain `http://` visits to `https://`.
 - **Another device can't connect at all**: check the device is on the same
-  Wi-Fi, and that the macOS firewall allows Python (System Settings → Network
-  → Firewall).
+  Wi-Fi, and that the firewall allows Python: on a Mac, System Settings →
+  Network → Firewall; on Windows, Windows Security → Firewall & network
+  protection → Allow an app through firewall → Python, **Private** ticked.
+  On Windows, also check that your home network is set to **Private**, not
+  Public (Settings → Network & internet → Wi-Fi → your network).
 - **"Address already in use"**: the server is already running (perhaps in
-  another Terminal window), or use `--port`.
+  another Terminal or Command Prompt window), or use `--port`.
+- **Windows: "No games found"**: tell the server where the games are with
+  `--games` (see [Running on Windows](#running-on-windows)).
 - **No sound or music**: click inside the game once. Also check the game's own
   music and sound settings (usually under the Player menu); they come over
   from the native app if you imported its saves.
