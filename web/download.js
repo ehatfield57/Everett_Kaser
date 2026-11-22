@@ -63,11 +63,18 @@ onmessage = async (e) => {
       if (ops.length) await KStore.applySaves(ops);
     }
 
-    // 3. the index; only now does the new copy replace the old one
+    // 3. the icon, kept with the game so the home page shows it with the server off
+    let icon = null, iconType = '';
+    try {
+      const r = await fetch(`/api/icon/${enc}`);
+      if (r.ok) { icon = new Uint8Array(await r.arrayBuffer()); iconType = r.headers.get('Content-Type') || 'image/png'; }
+    } catch {}
+
+    // 4. the index; only now does the new copy replace the old one
     await KStore.putGame({
       name: game, engine: index.engine, beta: index.beta, pgm: index.pgm, app: index.app,
       version: index.version, total: index.total, files: index.files, dirs: index.dirs,
-      pack: name, saved: Date.now(),
+      pack: name, saved: Date.now(), icon, iconType,
     });
     if (old && old.pack !== name) await KStore.removePack(old.pack);
     postMessage({ t: 'done' });

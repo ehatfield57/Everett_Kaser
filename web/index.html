@@ -132,6 +132,33 @@ async function showUsage() {
 // ------------------------------------------------------------------------ list
 function sizeText(bytes) { return bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(bytes / 1e6)) + ' MB'; }
 
+// A downloaded game keeps its own copy of its icon (see download.js), so the
+// home page looks right with the server off, even in a Home Screen app.
+function iconURL(name) {
+  const rec = stored.get(name);
+  if (rec && rec.icon) {
+    try { return URL.createObjectURL(new Blob([rec.icon], { type: rec.iconType || 'image/png' })); } catch {}
+  }
+  return '/api/icon/' + encodeURIComponent(name);
+}
+
+// Games downloaded before icons were kept: fetch their icons now.
+async function addMissingIcons() {
+  for (const rec of stored.values()) {
+    if (rec.icon) continue;
+    try {
+      const r = await fetch('/api/icon/' + encodeURIComponent(rec.name), { cache: 'no-store' });
+      if (!r.ok || r.headers.get('X-Kaser-Offline')) continue;
+      const fresh = await KStore.getGame(rec.name);
+      if (!fresh) continue;
+      fresh.icon = new Uint8Array(await r.arrayBuffer());
+      fresh.iconType = r.headers.get('Content-Type') || 'image/png';
+      await KStore.putGame(fresh);
+      stored.set(rec.name, fresh);
+    } catch {}
+  }
+}
+
 function makeCard(g) {
   const card = document.createElement('div');
   card.className = 'card';
@@ -139,9 +166,9 @@ function makeCard(g) {
   a.className = 'game';
   a.href = '/play?g=' + encodeURIComponent(g.name);
   const img = document.createElement('img');
-  img.src = '/api/icon/' + encodeURIComponent(g.name);
+  img.src = iconURL(g.name);
   img.alt = '';
-  img.loading = 'lazy';
+  img.onerror = () => { img.style.visibility = 'hidden'; };
   const name = document.createElement('div');
   name.className = 'name';
   name.textContent = g.name;
@@ -197,6 +224,7 @@ async function load() {
   for (const g of games) { makeCard(g); refreshCard(g.name); }
   applyFilter();
   showUsage();
+  if (online) addMissingIcons();
 }
 
 // ------------------------------------------------------------------- downloads
