@@ -65,7 +65,7 @@ onmessage = async (e) => {
 
     // 3. the index; only now does the new copy replace the old one
     await KStore.putGame({
-      name: game, engine: index.engine, pgm: index.pgm, app: index.app,
+      name: game, engine: index.engine, beta: index.beta, pgm: index.pgm, app: index.app,
       version: index.version, total: index.total, files: index.files, dirs: index.dirs,
       pack: name, saved: Date.now(),
     });

@@ -101,6 +101,7 @@ class Game:
                     self.shared[d.lower()] = (real, path.parent / real)
         self.engine = self._detect_engine()
         self.eks_name = self._read_eks_name()
+        self.beta = self._detect_beta() if self.engine == 6 else None
 
     def _read_eks_name(self) -> str:
         """The name the native Mac app uses for its save folder (e.g. "MESH Hero Defiant")."""
@@ -141,9 +142,48 @@ class Game:
             return 6
         return 0
 
+    def _detect_beta(self) -> dict | None:
+        """Pre-release (beta test) games come with a KINT 6 interpreter built in
+        BETA mode: some system calls take an extra "beta key" argument, and the
+        game stops working after a set date.  Recognised by the interpreter's
+        "BETA TEST period ... has elapsed" message.  Returns None for a normal
+        game, else {"expires": "YYYY-MM-DD" or None}: the first day it no
+        longer runs, read from the Mac app (unknown for Windows)."""
+        if self.mac:
+            exe_dir = self.bundle / "Contents" / "MacOS"
+            exes = sorted(exe_dir.iterdir()) if exe_dir.is_dir() else []
+        else:
+            exes = [p for p in sorted(self.bundle.iterdir()) if p.suffix.lower() == ".exe"]
+        marker = "BETA TEST period"
+        for exe in exes:
+            try:
+                data = exe.read_bytes()
+            except OSError:
+                continue
+            if marker.encode() in data or marker.encode("utf-16-le") in data:
+                return {"expires": beta_expiry_arm64(data)}
+        return None
+
     @property
     def saves(self) -> Path:
         return SAVES_DIR / self.name
+
+
+def beta_expiry_arm64(data: bytes) -> str | None:
+    """The Mac beta interpreter checks today's date with three compares in a
+    row, 16 bytes apart: cmp wN,#year / cmp wN,#month / cmp wN,#day, and
+    stops when today is on or after that date.  Find them in the arm64 code."""
+    def cmp_imm(ins):              # 32-bit "cmp wN, #imm" (unshifted)
+        return (ins >> 10) & 0xFFF if (ins & 0xFFC0001F) == 0x7100001F else None
+    words = memoryview(data)[: len(data) // 4 * 4].cast("I")
+    for i in range(len(words) - 8):
+        y = cmp_imm(words[i])
+        if y is None or not 2000 <= y <= 2100:
+            continue
+        m, d = cmp_imm(words[i + 4]), cmp_imm(words[i + 8])
+        if m and d and 1 <= m <= 12 and 1 <= d <= 31:
+            return f"{y:04d}-{m:02d}-{d:02d}"
+    return None
 
 
 def documents_folder() -> Path:
@@ -739,7 +779,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(SOUNDBANK) if SOUNDBANK else self.not_found()
         if path.startswith("/api/info/"):
             g = GAMES.get(path[len("/api/info/"):])
-            return self.send_json({"name": g.name, "engine": g.engine, **g.shown_paths()}) if g else self.not_found()
+            return self.send_json({"name": g.name, "engine": g.engine, "beta": g.beta, **g.shown_paths()}) if g else self.not_found()
         if path.startswith("/api/g/"):
             return self.game_api("GET", path, query)
         if path.startswith("/web/"):
@@ -756,7 +796,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.not_found()
         index, paths = _pack(g)
         if what == "index":
-            return self.send_json({"name": g.name, "engine": g.engine, **g.shown_paths(), **index})
+            return self.send_json({"name": g.name, "engine": g.engine, "beta": g.beta, **g.shown_paths(), **index})
         if what != "data":
             return self.not_found()
         if (query.get("v") or [""])[0] != index["version"]:

@@ -530,8 +530,26 @@ EMSCRIPTEN_KEEPALIVE void kp_set_paths(const char *pgmShown, const char *appShow
 	strncpy(AppDataPathShown, appShown, PATHLEN-1);
 }
 
+/* Beta-test games: the date (y/m/d) from which the game no longer runs, or
+   0/0/0 if not known.  Like the Mac beta interpreter, it then refuses to start. */
+int KBetaBuild = 0;
+static int BetaY, BetaM, BetaD;
+EMSCRIPTEN_KEEPALIVE void kp_set_beta(int y, int m, int d) {
+	KBetaBuild = 1;
+	BetaY = y; BetaM = m; BetaD = d;
+}
+
+static BOOL BetaExpired(void) {
+	KTIME	t;
+
+	if( !KBetaBuild || !BetaY ) return FALSE;
+	KGetTime(&t);
+	return t.y*10000 + t.mo*100 + t.d >= BetaY*10000 + BetaM*100 + BetaD;
+}
+
 EMSCRIPTEN_KEEPALIVE int kp_main(int screenW, int screenH, int winW, int winH) {
 
+	if( BetaExpired() ) return 4;
 	ResetDirty();
 	if( !LoadKE() ) return 2;
 	if( !SetupScreen(screenW, screenH, winW, winH) ) return 3;

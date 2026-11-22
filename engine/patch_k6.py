@@ -87,11 +87,22 @@ def patch_pmach_c():
     s = replace_once(s, '\t \tstrcpy((char*)pB, "\\\\");\t// or "/" for Mac OS\n',
                      '\t \tstrcpy((char*)pB, "/");\t/* WEB PORT: as on Mac OS */\n', "path divider")
     s = replace_once(s, "GetKeyState(GETMEMD(pArgs))", "KGetKeyState(GETMEMD(pArgs))", "key state")
+    # Beta-test games (an interpreter built with BETA 1) pass a "beta key"
+    # before the other arguments of fopen() and CreateBM().  Whether a game is
+    # a beta is only known at run time here (KBetaBuild, set by kp_set_beta),
+    # so skip that argument then.  The key itself isn't checked.
+    beta_key = ("#if BETA\n\t\t{\n\t\t\tDWORD\tpBK;\n\n"
+                "\t\t\tpBK = *(DWORD*)(mainKE + GETMEMD(pArgs)); pArgs += 4;\n"
+                "\t\t\tif( BETAKEY != *(DWORD*)(mainKE+pBK) ) break;\n\t\t}\n#endif // BETA\n")
+    if s.count(beta_key) != 2:
+        sys.exit(f"patch 'beta key': expected 2 matches, found {s.count(beta_key)}")
+    s = s.replace(beta_key, "\t\tif( KBetaBuild ) pArgs += 4;\t/* WEB PORT: skip the beta key */\n")
     write("pmach.c", s)
 
 
 # ------------------------------------------------------------------ graph.c
 SYSFONT_PORT = r'''#define	SYSFONTNUM	18
+#define	TF_INK_EXTENT	0x02000000	// WEB PORT: newer KINT (Honeycomb Hotel 3): don't draw, return the text's ink rows
 
 /* WEB PORT ------------------------------------------------------------------
  * The Windows build draws "system font" text with GDI.  Here the browser
@@ -120,6 +131,29 @@ void FreeSysFonts() {
 static int WebFontFlags(DWORD flags) {
 	return ((flags & CF_FIXED) ? 1 : 0) | ((flags & CF_BOLD) ? 2 : 0) | ((flags & CF_ITALIC) ? 4 : 0)
 	     | ((flags & CF_UNDERLINE) ? 8 : 0) | ((flags & CF_SERIF) ? 16 : 0);
+}
+
+/* Rows of SysFontBM (columns 0..w-1, rows 0..h-1) that have any non-white pixel:
+   returns (blank rows above them << 16) | (number of rows from the first to the
+   last), as the newer Mac interpreter does for TF_INK_EXTENT. */
+static DWORD InkExtent(int w, int h) {
+	int		top, bot, x;
+	DWORD	*row;
+
+	w = min(w, SysFontW);
+	h = min(h, SysFontH);
+	for(top=0; top<h; top++) {
+		row = (DWORD*)(SysFontBM.pBits + top*SysFontBM.linelen);
+		for(x=0; x<w && row[x]==0xFFFFFFFF; x++) ;
+		if( x<w ) break;
+	}
+	if( top>=h ) return (DWORD)h << 16;
+	for(bot=h; bot>top; bot--) {
+		row = (DWORD*)(SysFontBM.pBits + (bot-1)*SysFontBM.linelen);
+		for(x=0; x<w && row[x]==0xFFFFFFFF; x++) ;
+		if( x<w ) break;
+	}
+	return ((DWORD)top << 16) | (DWORD)(bot-top);
 }
 
 /* draw the first n characters at the top-left of SysFontBM (also makes the area opaque, like Untrans()) */
@@ -184,6 +218,11 @@ breakany:
 		ww += h/6;	// hack! a little slop for last char of italics
 	}
 
+	if( flags & TF_INK_EXTENT ) {	/* WEB PORT: black text on white, measured, not drawn */
+		DrawRect(-2, 0, 0, dw, h, 0xFFFFFFFF, 0);
+		SysFontText(curend, dw, h, 0xFF000000);
+		return InkExtent(min(w, ww), h);
+	}
 	if( !(flags & TF_GET_WIDTH) ) {	// if not just doing a "get text width," copy the drawn text
 		if( flags & CF_CENTER ) {			/// CENTERED
 			if( (bclr & 0xFF000000)!=0xFF000000 ) DrawBM(-2, 0, 0, hBM, x+(w-ww)/2, y, ww, h, 0, 0, 0);

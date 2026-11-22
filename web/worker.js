@@ -40,8 +40,14 @@ onmessage = async (e) => {
     const create = engine === 6 ? createKint6 : createKint5;
     const mod = await create(moduleArg);
     mod.ccall('kp_set_paths', null, ['string', 'string'], [m.pgmShown || 'pgm/', m.appShown || 'app/']);
+    if (m.beta && engine === 6) {     // a pre-release (beta test) game
+      const [y, mo, d] = (m.beta.expires || '0-0-0').split('-').map(Number);
+      mod._kp_set_beta(y, mo, d);
+    }
     const rc = mod._kp_main(m.screenW, m.screenH, m.w, m.h);
-    if (rc) postMessage({ t: 'crash', text: `The game could not start (code ${rc}).` });
+    if (rc === 4) postMessage({ t: 'crash', text: 'The BETA TEST period for this program has elapsed. Please replace it ' +
+      'with the official demo or licensed version. Visit our web page: www.kaser.com.' });
+    else if (rc) postMessage({ t: 'crash', text: `The game could not start (code ${rc}).` });
   } catch (err) {
     postMessage({ t: 'crash', text: String((err && err.stack) || err) });
   }

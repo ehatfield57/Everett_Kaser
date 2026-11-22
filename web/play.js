@@ -291,7 +291,7 @@ async function start() {
   const { w, h } = viewSize(), scr = screenSize();
   sizeCanvas(w, h);
   worker.postMessage({ t: 'init', game: GAME, local, sab, ringCap: RING_CAP, music: true,
-                       engine: info.engine, pgmShown: info.pgm, appShown: info.app,
+                       engine: info.engine, beta: info.beta, pgmShown: info.pgm, appShown: info.app,
                        screenW: scr.w, screenH: scr.h, w, h });
   canvas.focus();
 }

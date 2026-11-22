@@ -115,5 +115,6 @@ void ResumeMidi(void);
 DWORD KGetKeyState(DWORD vk);
 long unhandled_handler(void *e);
 extern char PgmPathShown[], AppDataPathShown[];
+extern int KBetaBuild;
 
 #endif
