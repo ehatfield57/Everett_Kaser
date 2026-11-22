@@ -14,12 +14,20 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "kint_src" / "k5" / "src"
+MAC_SRC = ROOT / "kint_src" / "mac" / "k5"   # Everett's newer Mac KINT 5 (for His Last Bow's helpers)
 PORT = ROOT / "engine" / "k5"          # our own port files (kport.h, kplat.c, ...)
 GEN = PORT / "gen"                     # patched copies of Everett's files
 
 
 def read(name):
     return (SRC / name).read_text(encoding="latin-1").replace("\r\n", "\n")
+
+
+def read_mac(name):
+    path = MAC_SRC / name
+    if not path.exists():
+        sys.exit(f"missing {path.relative_to(ROOT)}: unzip Everett's MacKINT5latest.zip into kint_src/mac/k5")
+    return path.read_text(encoding="latin-1").replace("\r\n", "\n")
 
 
 def write(name, text):
@@ -234,6 +242,57 @@ breakany:
 '''
 
 
+OPCODE_7B_7C = r'''		 case 0x7B:	// game compiled code (WEB PORT: from the Mac KINT)
+			switch( opcode & 0x00FF ) {
+			 case 0:	// HLB GenFindDeduction(DEDDAT*)
+				SETREGD(REG_16, GenFindDeduction((DEDDAT*)(pKode+GETREGD(REG_14)), GETREGD(REG_15)));
+				break;
+			 case 1:	// HLB GPSolvable(DEDDAT*)
+				SETREGD(REG_16, GPSolvable((DEDDAT*)(pKode+GETREGD(REG_14)), GETREGD(REG_15)));
+				break;
+			 case 2:	// HLB GenPath3(DEDDAT*, seed)
+				SETREGD(REG_16, GenPath3((DEDDAT*)(pKode+GETREGD(REG_14)), GETREGD(REG_15)));
+				break;
+			 case 0xFE:	// turn off screen updates (unused by games; the screen is sent each frame anyway)
+			 case 0xFF:	// turn on screen updates
+				break;
+			 default:
+				sprintf(TmpPath, "InvOpcode: 0x%4.4X @ 0x%8.8X", (unsigned)opcode, (unsigned)GETREGD(REG_3));
+				SystemMessage(TmpPath);
+				break;
+			}
+			break;
+		 case 0x7C:	// (WEB PORT: from the Mac KINT)
+			switch( opcode & 0x00FF ) {
+			 case 0:	// debug log of the string at R0:R15
+				printf("KINT debug: %.127s\n", (char*)GETREGD(REG_0) + GETREGD(REG_15));
+				break;
+			 case 1:	// ChksumMemlk(r1, r31, r30) handle, offset, len
+				{
+					DWORD	ofs = GETREGD(REG_31), len = GETREGD(REG_30), sum = 0;
+					BYTE	*p = GETREGD(REG_1) ? (BYTE*)GETREGD(REG_1) + ofs : pKode + ofs;
+
+					while( len-- ) sum = ((sum & 0x80000000)?1:0) + (sum<<1) + (DWORD)*p++;
+					SETREGD(REG_16, sum);
+				}
+				break;
+			}
+			break;
+'''
+
+
+def patch_hlb():
+    """His Last Bow's puzzle-generator helpers (opcode 0x7B), plain C apart
+    from the Objective-C #import lines."""
+    s = read_mac("hlb.m")
+    s = replace_once(s, '#import "kintView.h"\n#import "kintMAIN.h"\n#import "kintPMACH.h"\n',
+                     '#include "main.h"\t/* WEB PORT */\n#include "pmach.h"\n', "hlb imports")
+    s = replace_once(s, '#import "hlb.h"', '#include "hlb.h"', "hlb.h import")
+    write("hlb.c", s)
+    write("hlb.h", "/* WEB PORT */\n#include <stdint.h>\n#ifndef KLONG\ntypedef int32_t KLONG;\n#define KLONG KLONG\n#endif\n"
+          + read_mac("hlb.h"))
+
+
 def patch_pmach_c():
     s = read("pmach.c")
 
@@ -297,6 +356,21 @@ def patch_pmach_c():
                      "extern TCHAR\tPgmPathShown[PATHLEN], AppDataPathShown[PATHLEN];\t/* WEB PORT */\n",
                      "shown path externs")
 
+    # Opcodes 0x7B and 0x7C, from Everett's newer Mac interpreter (KINT 5.0
+    # treats them as unused).  0x7B00-02 are His Last Bow's puzzle-generator
+    # helpers, compiled natively (gen/hlb.c); 0x7BFE/FF turn screen updates off
+    # and on (no game uses them yet).  0x7C00 is a debug log, 0x7C01 a checksum.
+    s = replace_once(s, "#if hlb\n#include \"hlb.h\"\n#endif // hlb\n",
+                     "#define\thlb\t1\t/* WEB PORT */\n#include \"hlb.h\"\n", "hlb include")
+    s = replace_once(
+        s,
+        "\t\t case 0x7B:\t// unused\n\t\t case 0x7C:\t// unused\n"
+        "//SETREGD(REG_16, GETREGD(GETREGD(REG_15)));\n"
+        "\t\t\tdw = GETREGD(REG_15);\n\t\t\tpMem = pKode + dw;\n\t\t\tbreak;\n",
+        OPCODE_7B_7C,
+        "opcodes 7B/7C",
+    )
+
     # System-font text (GDI) -> browser canvas
     s = replace_between(s, "#define\tNUMSYSFONT\t100", "//#endif // _IS_BB", SYSFONT_PORT, "sysfont")
 
@@ -319,6 +393,7 @@ def main():
     GEN.mkdir(parents=True)
     patch_main_h()
     patch_pmach_c()
+    patch_hlb()
     patch_djpeg_h()
     for name in ("pmach.h", "float.c", "djpeg.c"):
         write(name, read(name))

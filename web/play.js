@@ -251,6 +251,11 @@ worker.onmessage = (e) => {
     case 'message':
       showBox(`<p>${escapeHtml(m.text)}</p>`, [button('OK', hideBox, true)]);
       break;
+    case 'ask': {     // Yes/No question; the game waits for the answer (see js_ask)
+      const answer = (yes) => { hideBox(); Atomics.store(ring, 2, yes ? 1 : 2); Atomics.notify(ring, 2); };
+      showBox(`<p>${escapeHtml(m.text)}</p>`, [button('Yes', () => answer(true), true), button('No', () => answer(false))]);
+      break;
+    }
     case 'saves': storeSaves(m.ops); break;
     case 'exit':
       worker.terminate();

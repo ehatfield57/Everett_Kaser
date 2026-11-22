@@ -60,6 +60,15 @@ def patch_main_h():
         s, "#ifndef _WINDOWS_\n    #include <windows.h>", '#include "midi.h"\n',
         '/* WEB PORT: browser/WebAssembly build */\n#include "kport6.h"\n', "includes")
     s = replace_once(s, '#include "midi.h"\n', "", "midi include")
+    # KINT 6.5 (Everett's newer Mac interpreter, used by Honeycomb Hotel 3):
+    # SYS 7/22 is a Yes/No message box, and SYS 9/2 compacts the heap
+    # instead of locking a block (no game uses HeapLock).
+    s = replace_once(s, "#define\tINTERP_MINORREV\t3\n#define\tINTERP_MICROREV\t1\n",
+                     "#define\tINTERP_MINORREV\t5\t/* WEB PORT: 6.5 features */\n#define\tINTERP_MICROREV\t0\n", "version")
+    s = replace_once(s, "#define\tSYS_SLEEP\t\t\t21\n",
+                     "#define\tSYS_SLEEP\t\t\t21\n#define\tSYS_SYSMSGYN\t\t22\t/* WEB PORT: KINT 6.5 */\n", "SYSMSGYN")
+    s = replace_once(s, "#define\tSYS_HLOCK\t\t\t2\n", "#define\tSYS_HCOMPACT\t\t2\t/* WEB PORT: KINT 6.5 (was SYS_HLOCK) */\n",
+                     "HCOMPACT")
     write("main.h", s)
 
 
@@ -97,12 +106,35 @@ def patch_pmach_c():
     if s.count(beta_key) != 2:
         sys.exit(f"patch 'beta key': expected 2 matches, found {s.count(beta_key)}")
     s = s.replace(beta_key, "\t\tif( KBetaBuild ) pArgs += 4;\t/* WEB PORT: skip the beta key */\n")
+
+    # ---- KINT 6.5 changes, from Everett's newer Mac interpreter
+    s = replace_once(s, "\t case SYS_SLEEP:\n\t\tKSleep(GETMEMD(pArgs));\n\t\tbreak;\n",
+                     "\t case SYS_SLEEP:\n\t\tKSleep(GETMEMD(pArgs));\n\t\tbreak;\n"
+                     "\t case SYS_SYSMSGYN:\t/* WEB PORT: KINT 6.5 Yes/No message box */\n"
+                     "\t\tSETMEMD(KEHED_R14, SystemMessageYN((char*)(mainKE + GETMEMD(pArgs))));\n"
+                     "\t\tbreak;\n",
+                     "SYSMSGYN")
+    s = replace_between(s, "\t\t case SYS_HLOCK:", "\t\t case SYS_HUNLOCK:",
+                        "\t\t case SYS_HCOMPACT:\t/* WEB PORT: KINT 6.5 */\n\t\t\tCompactHeap();\n\t\t\tbreak;\n",
+                        "HCOMPACT")
+    s = replace_once(s, "\t\tstrcpy(pS, pZ);\n\t\tbreak;\n", "\t\tif( pS!=pZ ) strcpy(pS, pZ);\n\t\tbreak;\n",
+                     "strcpy to itself")
+    # iniFindSec: skip quoted strings (which may hold a '['), as FindSec() does
+    s = replace_once(s, "\t\t\t\tfor(pINIsec=INIbuf; *pINIsec; ) {\n\t\t\t\t\tif( *pINIsec=='[' ) {\n",
+                     "\t\t\t\tfor(pINIsec=INIbuf; *pINIsec; ) {\n"
+                     "\t\t\t\t\tif( *pINIsec=='\"' ) {\t/* WEB PORT: skip quoted strings, as KINT 6.5 does */\n"
+                     "\t\t\t\t\t\tdo {\n\t\t\t\t\t\t\t++pINIsec;\n"
+                     "\t\t\t\t\t\t\tif( *pINIsec=='\\\\' ) {\n\t\t\t\t\t\t\t\t++pINIsec;\n"
+                     "\t\t\t\t\t\t\t\tif( *pINIsec=='\"' ) ++pINIsec;\n\t\t\t\t\t\t\t}\n"
+                     "\t\t\t\t\t\t} while( *pINIsec && *pINIsec!='\"' );\n\t\t\t\t\t}\n"
+                     "\t\t\t\t\tif( *pINIsec=='[' ) {\n",
+                     "iniFindSec quotes")
     write("pmach.c", s)
 
 
 # ------------------------------------------------------------------ graph.c
 SYSFONT_PORT = r'''#define	SYSFONTNUM	18
-#define	TF_INK_EXTENT	0x02000000	// WEB PORT: newer KINT (Honeycomb Hotel 3): don't draw, return the text's ink rows
+#define	TF_GET_HEIGHT	0x02000000	// KINT 6.5: don't draw, return (top white rows << 16) | text height
 
 /* WEB PORT ------------------------------------------------------------------
  * The Windows build draws "system font" text with GDI.  Here the browser
@@ -135,7 +167,7 @@ static int WebFontFlags(DWORD flags) {
 
 /* Rows of SysFontBM (columns 0..w-1, rows 0..h-1) that have any non-white pixel:
    returns (blank rows above them << 16) | (number of rows from the first to the
-   last), as the newer Mac interpreter does for TF_INK_EXTENT. */
+   last), as GetH() in the KINT 6.5 Mac interpreter does for TF_GET_HEIGHT. */
 static DWORD InkExtent(int w, int h) {
 	int		top, bot, x;
 	DWORD	*row;
@@ -183,7 +215,7 @@ DWORD DrawSysFontText(DWORD pArgs) {
 	bclr = GETMEMD(pArgs); pArgs += 4;
 	fclr = GETMEMD(pArgs);
 
-	if( w==0 || h==0 || *pText==0 ) return 0;
+	if( x<0 || y<0 || w==0 || h==0 || *pText==0 ) return 0;	// (x, y < 0: as KINT 6.5)
 
 	wcnt = js_sysfont_prepare(pText, h, WebFontFlags(flags));
 	curend = wcnt;
@@ -193,7 +225,7 @@ DWORD DrawSysFontText(DWORD pArgs) {
 			int		lastSpace=0;
 
 			for(curend=0; curend<wcnt; curend++) {
-				if( js_sysfont_char(curend)==' ' ) lastSpace = curend;
+				if( js_sysfont_char(curend)==' ' || js_sysfont_char(curend)==0x200B ) lastSpace = curend;	// (zero-width space: KINT 6.5)
 				if( js_sysfont_width(curend+1) > w ) {	// if still too big
 					if( curend==0 ) return 0;	// if not room to output even a single char
 					if( lastSpace==0 && (flags & TF_BREAK_CHAR) ) goto breakany;
@@ -218,7 +250,7 @@ breakany:
 		ww += h/6;	// hack! a little slop for last char of italics
 	}
 
-	if( flags & TF_INK_EXTENT ) {	/* WEB PORT: black text on white, measured, not drawn */
+	if( flags & TF_GET_HEIGHT ) {	/* black text on white, measured, not drawn */
 		DrawRect(-2, 0, 0, dw, h, 0xFFFFFFFF, 0);
 		SysFontText(curend, dw, h, 0xFF000000);
 		return InkExtent(min(w, ww), h);
@@ -287,6 +319,31 @@ def patch_graph_c():
     s = replace_once(s, "\tInvalidateRect(hWndMain, &rect, FALSE);\n\tScreenDirty = TRUE;",
                      "\tKInvalidate(rect.left, rect.top, rect.right, rect.bottom);\t/* WEB PORT */\n\tScreenDirty = TRUE;",
                      "InvalidateScreen")
+    # KINT 6.5 SetAlphaBM modes: -4 sets the alpha of partly transparent
+    # pixels; -5 replaces every pixel that isn't fully transparent with the
+    # colour+alpha given as 'alpha' (0xAARRGGBB, which is this memory layout).
+    s = replace_once(
+        s, "\t\t} else {\t\t\t\t\t\t\t/// set only MATCHING pixels to this ALPHA\n",
+        "\t\t} else if( qlr==0xFFFFFFFFFFFFFFFC ) {\t/* WEB PORT: KINT 6.5: PARTIALLY-TRANSPARENT pixels */\n"
+        "\t\t\tfor(ty=y; ty<y+h; ty++) {\n"
+        "\t\t\t\tfor(tx=x, pB = pARGBS + sStepY*ty + sStepX*tx; tx<x+w; tx++, pB+=sStepX) {\n"
+        "\t\t\t\t\tclr = *(DWORD*)pB >> 24;\n"
+        "\t\t\t\t\tif( clr > 0 && clr < 0xFF ) {\n"
+        "\t\t\t\t\t\t*(DWORD*)pB = (*(DWORD*)pB & 0x00FFFFFF) | alpha;\n\t\t\t\t\t\t++cnt;\n"
+        "\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n"
+        "\t\t} else if( qlr==0xFFFFFFFFFFFFFFFB ) {\t/* WEB PORT: KINT 6.5: NON-FULLY-TRANSPARENT pixels to colour+alpha */\n"
+        "\t\t\tfor(ty=y; ty<y+h; ty++) {\n"
+        "\t\t\t\tfor(tx=x, pB = pARGBS + sStepY*ty + sStepX*tx; tx<x+w; tx++, pB+=sStepX) {\n"
+        "\t\t\t\t\tif( (*(DWORD*)pB & 0xFF000000) ) {\n"
+        "\t\t\t\t\t\t*(DWORD*)pB = aclr;\n\t\t\t\t\t\t++cnt;\n"
+        "\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n"
+        "\t\t} else {\t\t\t\t\t\t\t/// set only MATCHING pixels to this ALPHA\n",
+        "SetAlpha modes")
+    s = replace_once(s, "\talpha= (GETMEMD(pArgs)<<24);", "\taclr = GETMEMD(pArgs);\t/* WEB PORT */\n\talpha= (aclr<<24);",
+                     "SetAlpha aclr")
+    s = replace_once(s, "\tDWORD\thBM, clr, alpha;\n\tlong\ttx, ty, tw;", "\tDWORD\thBM, clr, alpha, aclr;\n\tlong\ttx, ty, tw;",
+                     "SetAlpha aclr decl")
+
     # The GDI system-font code runs from here to the end of the file.
     s = s[:s.index(between(s, "#define\tSYSFONTNUM\t18", None, "sysfont"))] + SYSFONT_PORT
     write("graph.c", s)

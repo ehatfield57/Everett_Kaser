@@ -114,6 +114,7 @@ void PauseMidi(void);
 void ResumeMidi(void);
 DWORD KGetKeyState(DWORD vk);
 long unhandled_handler(void *e);
+BOOL SystemMessageYN(char *pMem);
 extern char PgmPathShown[], AppDataPathShown[];
 extern int KBetaBuild;
 

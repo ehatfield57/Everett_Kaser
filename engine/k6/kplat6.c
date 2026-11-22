@@ -37,6 +37,7 @@ extern void  js_music_pause(int pause);
 extern void  js_set_title(const char *s);
 extern void  js_set_cursor(int type);
 extern void  js_message(const char *s);
+extern int   js_ask(const char *s);
 extern void  js_clipboard_set(const char *s);
 extern void  js_open_url(const char *s);
 extern void  js_toupper(char *s);
@@ -214,6 +215,11 @@ long unhandled_handler(void *e) {
 
 void SystemMessage(char *pMem) {
 	js_message(pMem);
+}
+
+/* KINT 6.5 Yes/No message box: waits for the player's answer; TRUE for Yes */
+BOOL SystemMessageYN(char *pMem) {
+	return js_ask(pMem) ? TRUE : FALSE;
 }
 
 void WriteDebug(char *str) {

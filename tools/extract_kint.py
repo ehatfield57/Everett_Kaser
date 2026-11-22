@@ -2,7 +2,11 @@
 """
 Unpack Everett Kaser's KINT downloads into kint_src/ for building.
 
-    python3 tools/extract_kint.py [mskint50.zip] [kint_6_3_0.zip]
+    python3 tools/extract_kint.py [mskint50.zip] [kint_6_3_0.zip] [MacKINT5latest.zip] [MacKINT6latest.zip]
+
+The two Mac zips are Everett's newer interpreter source, which he sends on
+request (not on his website).  The KINT 5 one is required: it has His Last
+Bow's puzzle-generator code (hlb.m).  The KINT 6 one is kept for reference.
 
 Plain `unzip` stops partway through the KINT 6 zip because one help file has
 an accented name stored in an old encoding; this handles it.
@@ -12,7 +16,8 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TARGETS = {"k5": "mskint50.zip", "k6": "kint_6_3_0.zip"}
+TARGETS = {"k5": "mskint50.zip", "k6": "kint_6_3_0.zip",
+           "mac/k5": "mackint5latest.zip", "mac/k6": "mackint6latest.zip"}
 
 
 def extract(zip_path: Path, out: Path):
@@ -41,9 +46,11 @@ def extract(zip_path: Path, out: Path):
 def main():
     given = [Path(a) for a in sys.argv[1:]]
     for sub, default in TARGETS.items():
-        zip_path = next((p for p in given if p.name.lower() == default), ROOT / default)
+        zip_path = next((p for p in given if p.name.lower() == default), None)
+        zip_path = zip_path or next((p for p in ROOT.iterdir() if p.name.lower() == default), ROOT / default)
         if not zip_path.exists():
-            print(f"missing {default} (download it from https://kaser.com/kint.html)")
+            where = "ask Everett for it" if default.startswith("mac") else "download it from https://kaser.com/kint.html"
+            print(f"missing {default} ({where})")
             continue
         extract(zip_path, ROOT / "kint_src" / sub)
 

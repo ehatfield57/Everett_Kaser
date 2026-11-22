@@ -228,6 +228,16 @@ addToLibrary({
   },
   js_message__deps: ['$K'],
   js_message: function (p) { const text = K.str(p); console.warn('KINT:', text); K.post({ t: 'message', text }); },
+  // Yes/No question (KINT 6.5 SYS_SYSMSGYN).  The game waits for the answer,
+  // which the page writes to ring[2]: 1 = Yes, 2 = No.
+  js_ask__deps: ['$K'],
+  js_ask: function (p) {
+    const ring = Module.kint.ring, text = K.str(p);
+    Atomics.store(ring, 2, 0);
+    K.post({ t: 'ask', text });
+    while (Atomics.load(ring, 2) === 0) Atomics.wait(ring, 2, 0);
+    return Atomics.load(ring, 2) === 1 ? 1 : 0;
+  },
   js_clipboard_set__deps: ['$K'],
   js_clipboard_set: function (p) { K.post({ t: 'clipboard', text: K.str(p) }); },
   js_open_url__deps: ['$K'],

@@ -260,7 +260,10 @@ The built interpreters (`web/kint5.*`, `web/kint6.*`) and Everett's source are
 not in git, so after a fresh clone, or to change the interpreter code:
 
 1. Download `MSKINT50.ZIP` and `KINT_6_3_0.zip` from
-   <https://kaser.com/kint.html> into this folder.
+   <https://kaser.com/kint.html> into this folder, along with
+   `MacKINT5latest.zip` and `MacKINT6latest.zip` (Everett's newer Mac
+   interpreter source, which he sends on request; the KINT 5 one has the
+   native puzzle-generator code His Last Bow needs).
 2. Unpack them into `kint_src/`:
    `python3 tools/extract_kint.py`
 3. Build both interpreters (needs [Emscripten](https://emscripten.org),

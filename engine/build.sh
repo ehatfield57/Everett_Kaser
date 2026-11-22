@@ -20,7 +20,7 @@ COMMON="-Wno-everything --js-library k5/kint_lib.js
   -sINVOKE_RUN=0 -sEXIT_RUNTIME=0"
 
 emcc $OPT $COMMON -I k5 -I k5/gen \
-  k5/gen/pmach.c k5/gen/float.c k5/gen/djpeg.c k5/kplat.c \
+  k5/gen/pmach.c k5/gen/hlb.c k5/gen/float.c k5/gen/djpeg.c k5/kplat.c \
   -sEXPORTED_FUNCTIONS=_kp_main,_kp_event,_kp_set_paths -sEXPORT_NAME=createKint5 -o ../web/kint5.js
 echo "built web/kint5.js and web/kint5.wasm"
 
