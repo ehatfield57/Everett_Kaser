@@ -267,7 +267,10 @@ function showCrash(text) {
 
 async function start() {
   if (!crossOriginIsolated) {
-    showCrash('This page must be served by server.py (it needs cross-origin isolation for SharedArrayBuffer).');
+    showCrash(window.isSecureContext
+      ? 'This page must be served by server.py (it needs cross-origin isolation for SharedArrayBuffer).'
+      : 'Chrome only runs the games on a secure page, and this address isn\'t one. ' +
+        'Open /setup on this device to set it up (once), then play from the https:// address.');
     return;
   }
   document.title = GAME;

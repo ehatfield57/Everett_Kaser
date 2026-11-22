@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set Up This Device</title>
+<!-- Served over plain http:// to devices that don't trust the server yet, so it
+     must not load anything else from the server.  Everything is inline. -->
+<style>
+  :root { --bg: #f6f3ec; --card: #fffdf8; --ink: #2b2620; --soft: #6b6257; --line: #ddd4c4;
+          --accent: #8a4b14; --ok: #2f6b2f; --warn: #9a5b00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1b18; --card: #282521; --ink: #ece6dc; --soft: #a9a092; --line: #3e3933;
+            --accent: #e0a060; --ok: #8fcf8f; --warn: #f0b050; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5em; margin: 0 0 4px; }
+  h2 { font-size: 1.1em; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--soft); }
+  .status { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+            margin: 16px 0; font-weight: 600; }
+  .status.ok { color: var(--ok); }
+  .status.no { color: var(--warn); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+            padding: 16px; margin: 0 0 14px; }
+  ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 0 0 10px; }
+  .btn { display: inline-block; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--accent);
+         background: var(--accent); color: var(--card); font: inherit; font-weight: 600;
+         text-decoration: none; cursor: pointer; }
+  .btn.plain { background: transparent; color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 16px; }
+  details { margin: 0 0 14px; }
+  summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+  .note { font-size: .9em; color: var(--soft); }
+  b { font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Set up this device</h1>
+  <p class="lead">To play Everett Kaser's games on this device, it needs to trust the game server's
+    security certificate. You only do this once for each device.</p>
+
+  <div class="status" id="status">Checking this device…</div>
+
+  <div id="steps" hidden>
+    <div class="row" id="dlrow">
+      <a class="btn" href="/kaser-games-certificate.crt" download>Download certificate</a>
+      <button class="btn plain" id="again" type="button">Check again</button>
+    </div>
+    <p id="noca" hidden>The server uses a certificate you made yourself (cert.pem), so install the
+      certificate authority that made it on this device instead (for mkcert, that's its rootCA.pem).</p>
+
+    <section id="android">
+      <h2>Android</h2>
+      <ol>
+        <li>Tap <b>Download certificate</b>. If Chrome says the file can't be downloaded securely,
+          choose <b>Keep</b> or <b>Download anyway</b>.</li>
+        <li>Open <b>Settings</b> and search for <b>CA certificate</b>. It's usually under
+          Security (or Security &amp; privacy) → More security settings → Encryption &amp; credentials →
+          Install a certificate → <b>CA certificate</b>.</li>
+        <li>Tap <b>Install anyway</b>, unlock the device if asked, and pick
+          <b>kaser-games-certificate.crt</b> from Downloads. (Android only allows this when the device
+          has a screen lock such as a PIN.)</li>
+        <li>Come back here and tap <b>Check again</b>. If it still says “not yet”, close Chrome
+          completely and open this page again.</li>
+      </ol>
+    </section>
+
+    <section id="ios">
+      <h2>iPhone or iPad</h2>
+      <ol>
+        <li>Open this page in <b>Safari</b> (other browsers on iPhone and iPad can't install
+          certificates), tap <b>Download certificate</b> and then <b>Allow</b>.</li>
+        <li>Open <b>Settings</b>, tap <b>Profile Downloaded</b> near the top, then <b>Install</b>, and
+          enter your passcode.</li>
+        <li>In Settings, go to General → About → <b>Certificate Trust Settings</b> and turn on
+          <b>Kaser games on …</b>.</li>
+        <li>Come back here and tap <b>Check again</b>. After that, Chrome works too.</li>
+      </ol>
+    </section>
+
+    <section id="computer">
+      <h2>Another computer</h2>
+      <ol>
+        <li>Download the certificate and open the file.</li>
+        <li><b>Windows:</b> Install Certificate → Current User → “Place all certificates in the following
+          store” → Browse → <b>Trusted Root Certification Authorities</b> → Finish, and answer Yes.<br>
+          <b>Mac:</b> it opens in Keychain Access. Double-click “Kaser games on …”, open Trust, and set
+          “When using this certificate” to <b>Always Trust</b>.</li>
+        <li>Quit Chrome completely, open it again, and come back to this page.</li>
+      </ol>
+    </section>
+
+    <details id="more"><summary>Other kinds of device</summary></details>
+
+    <p class="note">The certificate only lets this device recognise the game server. Its secret key never
+      leaves the computer running the server. You can remove it later where you installed it.</p>
+  </div>
+</main>
+<script>
+'use strict';
+const HAS_CA = __HAS_CA__;
+const statusEl = document.getElementById('status');
+const host = location.host;
+// Where to go once this device is ready: the page that was asked for.
+const next = (location.pathname === '/setup' ? '/' : location.pathname) + location.search;
+const target = 'https://' + host + next;
+
+// Show this device's instructions first and tuck the others away.
+const ua = navigator.userAgent;
+const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const kind = /Android/.test(ua) ? 'android' : isIOS ? 'ios' : 'computer';
+const more = document.getElementById('more');
+for (const id of ['android', 'ios', 'computer']) if (id !== kind) more.append(document.getElementById(id));
+if (!HAS_CA) {
+  document.querySelector('#dlrow a').hidden = true;
+  document.getElementById('noca').hidden = false;
+}
+
+function ready() {
+  statusEl.className = 'status ok';
+  statusEl.textContent = 'This device is set up. Opening the games…';
+  setTimeout(() => location.replace(target), 600);
+}
+
+async function check() {
+  if (location.protocol === 'https:') {   // already on the secure address
+    statusEl.className = 'status ok';
+    statusEl.innerHTML = 'This device is set up. <a href="/">Open the games</a>';
+    return;
+  }
+  statusEl.className = 'status';
+  statusEl.textContent = 'Checking this device…';
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    // Only succeeds when this device trusts the server's certificate.
+    await fetch('https://' + host + '/api/ping', { mode: 'no-cors', cache: 'no-store', signal: ctl.signal });
+    return ready();
+  } catch {
+  } finally { clearTimeout(timer); }
+  statusEl.className = 'status no';
+  statusEl.textContent = 'Not set up yet. Follow the steps below.';
+  document.getElementById('steps').hidden = false;
+}
+document.getElementById('again').addEventListener('click', check);
+check();
+</script>
+</body>
+</html>

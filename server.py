@@ -10,16 +10,17 @@ linked in ./games, or the Windows game folders (found automatically in the
 usual install places, or given with --games).  Anything a game writes
 (settings, progress, logs) is stored under ./saves/<game name>/.
 The server listens on all network interfaces, so other devices on your local
-network can play too.  If cert.pem and key.pem (made with mkcert) are next to
-this file it serves HTTPS, otherwise plain HTTP.  It uses only the Python
-standard library.
+network can play too.  They need https://, so the server makes its own
+certificate in tls/ (see certs.py; needs the "cryptography" package) and shows
+each new device how to trust it at http://<address>:8765/.  On the computer
+itself http://localhost works without any certificate.  If cert.pem and key.pem
+(made with mkcert) are next to this file, those are used instead.
 """
 from __future__ import annotations
 
 import argparse
 import fnmatch
 import hashlib
-import html
 import json
 import mimetypes
 import os
@@ -36,6 +37,8 @@ import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import certs
 
 ROOT = Path(__file__).resolve().parent
 GAMES_DIR = ROOT / "games"
@@ -200,6 +203,8 @@ def windows_install_folders() -> list[Path]:
         if base:
             found.append(Path(base) / "Everett Kaser Software")
     found.append(Path(r"C:\Everett Kaser Software"))
+    for drive in "CD":
+        found.append(Path(f"{drive}:\\eks"))       # the installers' usual default
     return found
 
 
@@ -516,6 +521,7 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
     verbose = False
     ssl_ctx: ssl.SSLContext | None = None   # set when serving HTTPS
+    ca_cert: Path | None = None             # the certificate devices install to trust us
 
     def finish_request(self, request, client_address):
         # Runs in the connection's own thread, so one slow or stuck device
@@ -527,36 +533,14 @@ class Server(ThreadingHTTPServer):
         if not first:
             return
         if first != b"\x16":        # not a TLS handshake: an http:// address
-            return self.redirect_to_https(request, client_address)
+            request.settimeout(None)
+            return super().finish_request(request, client_address)
         tls = self.ssl_ctx.wrap_socket(request, server_side=True)
         try:
             tls.settimeout(None)
             super().finish_request(tls, client_address)
         finally:
             self.shutdown_request(tls)
-
-    def redirect_to_https(self, sock, client_address):
-        """Answer a plain-HTTP request with a redirect to the same page over HTTPS."""
-        data = b""
-        while b"\r\n\r\n" not in data and len(data) < 16384:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            data += chunk
-        lines = data.decode("latin-1").split("\r\n")
-        parts = lines[0].split(" ")
-        path = parts[1] if len(parts) > 1 and parts[1].startswith("/") else "/"
-        host = next((ln.split(":", 1)[1].strip() for ln in lines[1:]
-                     if ln.lower().startswith("host:")), "")
-        if not host:
-            host = f"localhost:{self.server_address[1]}"
-        location = f"https://{host}{path}"
-        if self.verbose:
-            print(f"{client_address[0]}: plain http, redirecting to {location}", file=sys.stderr)
-        body = f'<a href="{html.escape(location)}">{html.escape(location)}</a>\n'.encode("latin-1", "replace")
-        sock.sendall(f"HTTP/1.1 301 Moved Permanently\r\nLocation: {location}\r\n"
-                     f"Content-Type: text/html\r\nContent-Length: {len(body)}\r\n"
-                     "Connection: close\r\n\r\n".encode("latin-1", "replace") + body)
 
     def handle_error(self, request, client_address):
         # A device that doesn't trust the certificate, or a dropped connection,
@@ -599,6 +583,32 @@ def bonjour_name() -> str | None:
     return f"{name}.local" if name else None
 
 
+def lan_addresses() -> list[str]:
+    """Every IPv4 address this computer has on the local network, the main one first."""
+    out = []
+    main = lan_address()
+    if main:
+        out.append(main)
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip not in out and not ip.startswith("127.") and not ip.startswith("169.254."):
+                out.append(ip)
+    except OSError:
+        pass
+    return out
+
+
+def mkcert_ca() -> Path | None:
+    """mkcert's root certificate, when the user's own cert.pem came from mkcert."""
+    try:
+        root = subprocess.run(["mkcert", "-CAROOT"], capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    p = Path(root) / "rootCA.pem" if root else None
+    return p if p and p.exists() else None
+
+
 def lan_address() -> str | None:
     """This Mac's address on the local network (no packets are sent)."""
     try:
@@ -616,10 +626,12 @@ class Handler(BaseHTTPRequestHandler):
 
     # The game runs in a worker that needs SharedArrayBuffer, which Chrome
     # only allows on "cross-origin isolated" pages.
+    corp = "same-origin"
+
     def end_headers(self):
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
-        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", self.corp)
         self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
@@ -650,6 +662,35 @@ class Handler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         self.send_bytes(data, ctype)
 
+    # -- plain http:// from another device
+    def plain_from_elsewhere(self) -> bool:
+        """True for an http:// request from another device while we serve HTTPS.
+        Chrome won't run the games on such a page, so it only gets the setup page
+        (which forwards to https:// once the device trusts our certificate)."""
+        if self.server.ssl_ctx is None or isinstance(self.connection, ssl.SSLSocket):
+            return False
+        ip = self.client_address[0]
+        if ip.startswith("::ffff:"):
+            ip = ip[7:]
+        return not (ip.startswith("127.") or ip == "::1")
+
+    def send_ca(self):
+        der = certs.ca_der(self.server.ca_cert) if self.server.ca_cert else None
+        if not der:
+            return self.not_found()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/x-x509-ca-cert")
+        self.send_header("Content-Disposition", 'attachment; filename="kaser-games-certificate.crt"')
+        self.send_header("Content-Length", str(len(der)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(der)
+
+    def send_setup(self):
+        page = (WEB_DIR / "setup.html").read_text(encoding="utf-8")
+        page = page.replace("__HAS_CA__", "true" if self.server.ca_cert else "false")
+        self.send_bytes(page.encode(), "text/html; charset=utf-8")
+
     # -- routing
     def do_HEAD(self):
         self.do_GET()
@@ -658,6 +699,15 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlsplit(self.path)
         path = urllib.parse.unquote(url.path)
         query = urllib.parse.parse_qs(url.query)
+        if path == "/kaser-games-certificate.crt":
+            return self.send_ca()
+        if path == "/setup" or self.plain_from_elsewhere():
+            return self.send_setup()
+        if path == "/api/ping":
+            # The setup page (on http://) asks this over https:// to see whether
+            # this device trusts the certificate yet.
+            self.corp = "cross-origin"
+            return self.send_bytes(b"ok", "text/plain")
         if path in ("/", "/index.html"):
             return self.send_file(WEB_DIR / "index.html")
         if path == "/play":
@@ -729,10 +779,14 @@ class Handler(BaseHTTPRequestHandler):
                     left -= len(chunk)
 
     def do_PUT(self):
+        if self.plain_from_elsewhere():
+            return self.send_bytes(b"use https", "text/plain", HTTPStatus.FORBIDDEN)
         url = urllib.parse.urlsplit(self.path)
         self.game_api("PUT", urllib.parse.unquote(url.path), urllib.parse.parse_qs(url.query))
 
     def do_POST(self):
+        if self.plain_from_elsewhere():
+            return self.send_bytes(b"use https", "text/plain", HTTPStatus.FORBIDDEN)
         url = urllib.parse.urlsplit(self.path)
         self.game_api("POST", urllib.parse.unquote(url.path), urllib.parse.parse_qs(url.query))
 
@@ -839,36 +893,55 @@ def main():
     global GAMES
     GAMES = find_games([Path(g).expanduser() for g in args.games])
 
-    if not (WEB_DIR / "kint5.wasm").exists():
-        sys.exit("web/kint5.wasm is missing - build it first with: engine/build.sh")
+    missing = [f for f in ("index.html", "play.js", "kint5.wasm", "kint6.wasm") if not (WEB_DIR / f).exists()]
+    if missing:
+        sys.exit(f"Some files are missing from {WEB_DIR} ({', '.join(missing)}).\n"
+                 "The zip was probably unzipped without its folders.  Unzip it again,\n"
+                 "keeping the folders (in Windows: right-click the zip > Extract All...).")
     SAVES_DIR.mkdir(exist_ok=True)
 
-    use_tls = not args.http and Path(args.cert).exists() and Path(args.key).exists()
-    if not args.http and not use_tls:
-        print(f"No certificate at {args.cert} / {args.key}; serving plain HTTP.")
+    # Other devices need https://.  This computer can use http://localhost.
+    cert = key = None
+    own_cert = False          # the user's own (mkcert) certificate: trusted here too
+    lan = [] if args.local else lan_addresses()
+    if not args.http:
+        if Path(args.cert).exists() and Path(args.key).exists():
+            cert, key, own_cert = args.cert, args.key, True
+        elif not args.local:
+            if certs.available():
+                try:
+                    cert, key, new_ca = certs.ensure(lan)
+                    if new_ca:
+                        print(f"Made a security certificate for this computer in {certs.TLS_DIR}")
+                except Exception as err:      # never let this stop the games on this computer
+                    print(f"Couldn't make a security certificate ({err}); other devices won't be able to play.")
+            else:
+                print("Tablets, phones and other computers can't play until the 'cryptography' package is installed:\n"
+                      f"    {'py' if IS_WINDOWS else 'python3'} -m pip install cryptography\n"
+                      "  (start-windows.bat does this for you), then start the server again.")
 
     httpd = make_server(args.local, args.port)
     httpd.verbose = args.verbose
-    if use_tls:
+    if cert:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(args.cert, args.key)
+        ctx.load_cert_chain(cert, key)
         httpd.ssl_ctx = ctx
+        httpd.ca_cert = mkcert_ca() if own_cert else certs.CA_CERT
 
-    scheme = "https" if use_tls else "http"
-    url = f"{scheme}://localhost:{args.port}/"
-    print(f"Found {len(GAMES)} games.  Serving on {url}  (Ctrl+C to stop)")
+    url = f"{'https' if own_cert else 'http'}://localhost:{args.port}/"
+    print(f"Found {len(GAMES)} games.  On this computer, open {url}  (Ctrl+C to stop)")
     if not GAMES:
         print("  No games found.  Tell the server where they are installed, for example:\n"
               '    py server.py --games "C:\\Program Files (x86)\\Everett Kaser Software"')
     if not SOUNDBANK:
         print("  No General MIDI sound bank found, so there will be no music "
               "(put one next to server.py as soundbank.sf2).")
-    lan = None if args.local else lan_address()
-    if lan:
-        print(f"Other devices on your network: {scheme}://{lan}:{args.port}/")
+    if lan and cert:
+        print(f"Tablets, phones and other computers: open http://{lan[0]}:{args.port}/")
+        print("   The first time, it shows how to set the device up; after that it goes straight to the games.")
         name = bonjour_name()
         if name:
-            print(f"   or, by name (stays the same if the address changes): {scheme}://{name}:{args.port}/")
+            print(f"   or, by name (stays the same if the address changes): http://{name}:{args.port}/")
     if args.open:
         if IS_MAC:
             subprocess.run(["open", "-a", "Google Chrome", url], check=False)

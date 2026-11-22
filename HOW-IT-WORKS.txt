@@ -55,9 +55,10 @@ as Everett wrote it.
   - File reads have to be instant, so they either ask the server directly
     or read from the copy of the game already stored on the device.
 
-Browsers only allow that shared memory on secure (HTTPS) pages that send
-two special headers. That's why the server uses HTTPS, and why the iPad
-needs it.
+Browsers only allow that shared memory (and the audio engine, and storing
+games on the device) on secure pages that send two special headers. A page
+counts as secure at http://localhost on the computer itself, or over
+https:// anywhere. That's why tablets and phones need HTTPS.
 
 
 Screen, sound and music
@@ -74,7 +75,8 @@ Screen, sound and music
 
 server.py only hands out files
 ------------------------------
-server.py uses only Python's standard library. It:
+server.py uses Python's standard library, plus the cryptography package
+to make its certificate for tablets and phones. It:
   - finds the games (Mac apps linked in games/, or the Windows game
     folders where they're installed) and works out which interpreter each
     one needs,
@@ -106,22 +108,30 @@ worth asking your router to always give the Mac the same address.
 
 HTTPS and the certificate
 -------------------------
-mkcert made a private certificate authority (a "root" certificate) that
-exists only on your machines, and used it to sign cert.pem for the Mac's
-addresses. Each device must trust that root: on the iPad, by installing
-rootCA.pem and turning on full trust under Settings > General > About >
-Certificate Trust Settings.
+The first time it starts, the server makes a private certificate
+authority (a "root" certificate) that exists only on that computer, and
+uses it to sign a certificate for the computer's names and addresses
+(all kept in the tls folder). When the address changes, it signs a new
+one by itself.
 
-Skipping the full-trust step causes a confusing symptom. The iPad
-refuses the server's certificate, but the launcher runs from the service
-worker's copy, so no warning appears. The page just loads forever, then
-says it can't reach the game server. Once the root is trusted, every
-certificate from the same mkcert is accepted automatically, including new
-ones made when the Mac's address changes.
+Each other device must trust that root once. When a device that doesn't
+yet trust it opens the server's http:// address, the server answers with
+a "Set up this device" page instead of the games. (It can tell, because
+an HTTPS connection always starts with the byte 0x16.) The page offers
+the root certificate to download and shows the steps for Android,
+iPhone/iPad or a computer. It then asks the server over https:// in the
+background; once that works, the device trusts the server, and the page
+moves to the https:// address. After that, the http:// address forwards
+there by itself. The computer running the server can always use
+http://localhost, so it needs no setup.
 
-If you type http:// instead of https://, the server notices (an HTTPS
-connection always starts with the byte 0x16) and redirects you to the
-https:// address.
+On an iPad, skipping the "full trust" step (Settings > General > About >
+Certificate Trust Settings) causes a confusing symptom: the launcher
+runs from the service worker's copy, so no warning appears. The page
+just loads forever, then says it can't reach the game server.
+
+If cert.pem and key.pem made with mkcert are present, the server uses
+those instead, and the setup page offers mkcert's root.
 
 
 Touch on the iPad

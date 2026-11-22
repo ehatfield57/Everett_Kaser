@@ -148,10 +148,10 @@ html { scroll-behavior: smooth; }
 
     <rect class="box" x="36" y="212" width="250" height="110" rx="8"/>
     <text class="t-title" x="52" y="238">server.py</text>
-    <text class="t-small" x="52" y="260">Python, standard library only.</text>
+    <text class="t-small" x="52" y="260">Python, plus cryptography for HTTPS.</text>
     <text class="t-small" x="52" y="278">Lists games, serves their files,</text>
     <text class="t-small" x="52" y="296">stores saves, packs downloads.</text>
-    <text class="t-mono" x="52" y="314">cert.pem · key.pem (mkcert)</text>
+    <text class="t-mono" x="52" y="314">tls/ (its own certificate)</text>
 
     <rect class="box-alt" x="36" y="368" width="250" height="96" rx="8"/>
     <text class="t-title" x="52" y="394">saves/&lt;game&gt;/</text>
@@ -276,7 +276,7 @@ html { scroll-behavior: smooth; }
   <p>Saves from the native apps (on the Mac in <code>~/Library/Application Support/Everett Kaser Software/</code>, on Windows in <code>Documents\Everett Kaser Software\</code>) can be copied into <code>saves/</code> once with <code>tools/import_native_saves.py</code>. From then on the two are separate. Playing in the browser doesn't change the native apps' saves, and the other way round.</p>
 
   <h2 id="server">The server</h2>
-  <p><code>server.py</code> uses only Python's standard library, so there's nothing to install. When it starts, it looks in <code>games/</code> for Mac apps containing a <code>MAIN.KE</code> (on Windows, in the folders where the games are installed), works out which interpreter each needs from the file's first bytes, and listens on port 8765. Each connection gets its own thread, so a slow iPad never holds up the Mac.</p>
+  <p><code>server.py</code> uses Python's standard library, plus the <code>cryptography</code> package to make its certificate for other devices (<code>start-windows.bat</code> installs it). When it starts, it looks in <code>games/</code> for Mac apps containing a <code>MAIN.KE</code> (on Windows, in the folders where the games are installed), works out which interpreter each needs from the file's first bytes, and listens on port 8765. Each connection gets its own thread, so a slow iPad never holds up the Mac.</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Address</th><th>What it does</th></tr></thead>
@@ -308,12 +308,14 @@ html { scroll-behavior: smooth; }
 
   <h2 id="network">Network and HTTPS</h2>
   <h3>Listening</h3>
-  <p>The server listens on every network connection the Mac has, over both IPv4 and IPv6, so an iPad on the same Wi-Fi can reach it at the Mac's address, for example <code>https://192.168.1.20:8765</code>. The server prints the right address when it starts. The firewall (macOS or Windows) must allow Python to accept incoming connections.</p>
+  <p>The server listens on every network connection the Mac has, over both IPv4 and IPv6, so a tablet or phone on the same Wi-Fi can reach it at the computer's address, for example <code>http://192.168.1.20:8765</code>. The server prints the right address when it starts. The firewall (macOS or Windows) must allow Python to accept incoming connections.</p>
+  <h3>Why tablets need HTTPS</h3>
+  <p>The game's shared memory, the audio engine and on-device storage only work on a secure page. On the computer running the server, <code>http://localhost</code> counts as secure, so it needs nothing. Every other device needs <code>https://</code>, and that needs a certificate the device trusts.</p>
   <h3>The certificate</h3>
-  <p>HTTPS needs a certificate the browser trusts. <strong>mkcert</strong> made a private certificate authority on your Mac, a "root" certificate that exists only on your machines, and used it to sign <code>cert.pem</code> for your Mac's addresses. A device trusts the server only if it trusts that root. On an iPad, that means installing the <code>rootCA.pem</code> profile, then turning on full trust under Settings → General → About → Certificate Trust Settings.</p>
-  <p>Skipping the full-trust step causes a confusing symptom. The iPad refuses the server's certificate, but the launcher runs from the service worker's copy, so no warning appears. The page just loads forever, then says it can't reach the game server. Once the root is trusted, every certificate from the same mkcert is accepted automatically, including new ones made when the Mac's address changes.</p>
-  <h3>Typing <code>http://</code> by mistake</h3>
-  <p>Every HTTPS connection starts with a "handshake" message whose first byte is <code>0x16</code>. The server peeks at the first byte of each new connection. If it's anything else, the visitor typed <code>http://</code>, so the server answers in plain HTTP with a redirect to the same page over <code>https://</code>.</p>
+  <p>The first time it starts, the server makes a private certificate authority, a "root" certificate that exists only on that computer, and uses it to sign a certificate for the computer's names and addresses (all in the <code>tls</code> folder). When the address changes, it signs a new one by itself, and devices that already trust the root accept it with nothing to do. If <code>cert.pem</code> and <code>key.pem</code> made with mkcert are present, it uses those instead.</p>
+  <h3>Setting up a device</h3>
+  <p>Every HTTPS connection starts with a "handshake" message whose first byte is <code>0x16</code>. The server peeks at the first byte of each new connection. If it's anything else, a device typed <code>http://</code>, and the server answers with a <strong>Set up this device</strong> page instead of the games. The page offers the root certificate to download, with the steps for Android, iPhone and iPad, or a computer. Meanwhile it quietly asks the server over <code>https://</code>; once that succeeds the device trusts the server, and the page moves to the <code>https://</code> address. After that, the <code>http://</code> address forwards there by itself.</p>
+  <p>On an iPad, skipping the full-trust step (Settings → General → About → Certificate Trust Settings) causes a confusing symptom. The launcher runs from the service worker's copy, so no warning appears. The page just loads forever, then says it can't reach the game server.</p>
 
   <h2 id="ipad">Touch on the iPad and iPhone</h2>
   <p>The games were made for a mouse, so the game page turns touches into mouse actions:</p>

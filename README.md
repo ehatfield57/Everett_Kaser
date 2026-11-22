@@ -21,9 +21,9 @@ Start the server from this folder:
 python3 server.py --open
 ```
 
-`--open` opens the launcher in Chrome. Otherwise go to <https://localhost:8765>
-yourself (or `http://` if you haven't made a certificate; see
-[Playing on other devices](#playing-on-other-devices)). Leave the Terminal window open while you play; press **Ctrl+C** in it
+`--open` opens the launcher in Chrome. Otherwise go to the address it prints
+(<http://localhost:8765>, or `https://` if you made your own certificate with
+mkcert; see [Playing on other devices](#playing-on-other-devices)). Leave the Terminal window open while you play; press **Ctrl+C** in it
 to stop the server.
 
 Tips:
@@ -72,8 +72,8 @@ Server options:
 - `--local` accepts connections from this computer only.
 - `--games FOLDER` also looks for games in that folder (it can be given more
   than once). The folder can be a game, hold games, or hold folders of games.
-- `--http` serves plain HTTP even if a certificate exists.
-- `--cert` and `--key` point at a certificate other than `cert.pem` and `key.pem`.
+- `--http` serves plain HTTP only (other devices then can't play).
+- `--cert` and `--key` point at your own certificate instead of `cert.pem` and `key.pem`.
 
 ## Running on Windows
 
@@ -82,18 +82,24 @@ you've installed. Nothing in the games or your Windows installation is
 changed.
 
 1. Install Python 3 from <https://www.python.org/downloads/>. During
-   installation, tick **Add python.exe to PATH**.
-2. Put this folder anywhere you like, for example in Documents.
-3. Double-click **`start-windows.bat`**. It starts the server and opens the
-   game list in your browser. Keep its window open while you play; close it
-   to stop the server.
+   installation, tick **Add python.exe to PATH**. (Windows has a `python`
+   command even without it, but that only points to the Microsoft Store;
+   `start-windows.bat` tells you if that's all it finds.)
+2. Unzip this folder **with its folders kept** (right-click the zip →
+   **Extract All…**) and put it anywhere you like, for example in Documents.
+3. Double-click **`start-windows.bat`**. The first time, it installs the
+   `cryptography` package that the server uses to make its security
+   certificate for tablets and phones. Then it starts the server and opens
+   the game list in your browser. Keep its window open while you play; close
+   it to stop the server.
 
 If Windows Firewall asks whether Python may communicate on networks, allow
 it on **private networks** if you want to play from other devices (a phone or
 tablet); otherwise you can say no.
 
 **Where it looks for games:** the folders the Kaser installers registered
-with Windows, plus `Program Files\Everett Kaser Software` and
+with Windows, plus `C:\eks` (the installers' usual choice),
+`Program Files\Everett Kaser Software` and
 `Program Files (x86)\Everett Kaser Software`. If your games are somewhere
 else, it says "No games found" when it starts. Edit `start-windows.bat` in
 Notepad and add the folder to the `server.py` line, for example:
@@ -113,21 +119,60 @@ shared `MUSIC` and `COMMONUI` folders there, next to the game folders.
 [Your saves](#your-saves): run `py tools\import_native_saves.py` in a Command
 Prompt in this folder.
 
-**HTTPS for other devices:** mkcert works on Windows too. Install it (for
-example `winget install FiloSottile.mkcert`), then run the mkcert commands in
-the next section in a Command Prompt in this folder, using your PC's name and
-address. The address for other devices is printed when the server starts.
-
 ## Playing on other devices
 
 The server accepts connections from any device on your home network. When it
 starts it prints the address for other devices, for example
-`https://192.168.4.45:8765/`.
+`http://192.168.4.45:8765/`. Open that address on the phone, tablet or other
+computer.
 
-Browsers only let the games run on a **secure (HTTPS)** page, except at
-`localhost`. So other devices need HTTPS, which uses a certificate made by
-[mkcert](https://github.com/FiloSottile/mkcert). If `cert.pem` and `key.pem`
-are in this folder the server uses HTTPS automatically. To make them:
+Browsers only let the games run on a **secure (https://) page**, except at
+`localhost` on the computer itself. So the server makes its own security
+certificate the first time it starts (in the `tls` folder; this needs the
+`cryptography` package, which `start-windows.bat` installs, or
+`python3 -m pip install cryptography`). Each other device has to trust it
+once:
+
+1. Open the `http://` address on the device. The first time, it shows a
+   **Set up this device** page with a **Download certificate** button and the
+   steps for that kind of device:
+   - **Android:** download it, then Settings → search for **CA certificate**
+     (usually Security → More security settings → Encryption & credentials →
+     Install a certificate → CA certificate) → Install anyway → pick
+     `kaser-games-certificate.crt`. Android only allows this when the device
+     has a screen lock.
+   - **iPhone / iPad:** use **Safari** for this step. Download it and allow
+     it, then Settings → **Profile Downloaded** → Install, and turn it on in
+     Settings → General → About → **Certificate Trust Settings**.
+   - **Another computer:** open the file and add it to the trusted root
+     certificates (Windows: Install Certificate → Current User → Trusted Root
+     Certification Authorities; Mac: Keychain Access → Always Trust).
+2. Tap **Check again**. Once the device trusts the server, the page goes
+   straight to the games, at the `https://` address. From then on the
+   `http://` address forwards there by itself.
+
+The certificate's secret key (`tls/ca-key.pem`) never leaves this computer;
+don't share it. When the computer's network address changes, the server
+makes a new certificate by itself and devices that are already set up don't
+need to do anything.
+
+A device keeps its downloaded games and its progress separately for each
+address, so stick to one address on each device. The computer's name
+(`Edwards-MacBook.local`) is the safest choice because it stays the same when
+the IP address changes, but some home networks (eero, for one) don't let
+devices find it. If you do move to a new address, open the old one once more
+and use **Remove all games from this device** to free the space (the page
+opens even when the server isn't at that address).
+
+Everyone playing shares the same saves folder, so two people playing the same
+game at once overwrite each other's progress.
+
+If macOS asks whether Python may accept incoming network connections, choose
+**Allow**. On Windows, allow it on **private networks**.
+
+**Using mkcert instead.** If `cert.pem` and `key.pem` are in this folder, the
+server uses them rather than making its own, and the setup page offers
+mkcert's root certificate. To make them:
 
 ```
 brew install mkcert
@@ -135,51 +180,8 @@ mkcert -install          # trust mkcert's certificate authority on this Mac
 mkcert -cert-file cert.pem -key-file key.pem Edwards-MacBook.local localhost 127.0.0.1 192.168.4.48 192.168.4.45
 ```
 
-Use your Mac's own name and address. Run the last command again if the Mac's
-network address changes. Devices that already trust mkcert's authority (below)
-accept the new certificate with nothing more to do.
-
-A device keeps its downloaded games and its progress separately for each
-address, so stick to one address on each device. The Mac's name
-(`https://Edwards-MacBook.local:8765`) is the safest choice because it stays
-the same when the IP address changes. If you do move to a new address, open
-the old one once more and use **Remove all games from this device** to free
-the space (the page opens even when the server isn't at that address).
-
-**Each other device must trust mkcert's authority too**, or it shows a security
-warning. The file to install is `rootCA.pem`, in the folder that
-`mkcert -CAROOT` prints:
-
-- **iPhone / iPad:**
-  1. On the Mac, `open "$(mkcert -CAROOT)"`, right-click `rootCA.pem` and
-     choose Share → AirDrop, then pick the device. (Not `rootCA-key.pem`.)
-  2. On the device, open Settings and tap **Profile Downloaded** near the top
-     (or General → VPN & Device Management), then **Install**.
-  3. Turn on full trust: Settings → General → About → **Certificate Trust
-     Settings** → switch on the mkcert entry. Without this step the profile
-     does nothing.
-  4. Close and reopen the browser. This covers both Chrome and Safari.
-- **Another Mac:** open `rootCA.pem` in Keychain Access, add it to the System
-  keychain, and set it to "Always Trust".
-- **Android:** copy `rootCA.pem` to the phone or tablet (by email, USB or a
-  cloud drive), then open Settings → **Security** (or Security & privacy) →
-  More security settings → **Encryption & credentials** → **Install a
-  certificate** → **CA certificate**, accept the warning, and pick the file.
-  The exact menu names vary by maker; searching Settings for "certificate"
-  finds it. Chrome trusts it after that.
-- **Windows:** double-click `rootCA.pem` (rename it to `rootCA.crt` first if
-  Windows doesn't open it), choose **Install Certificate**, **Current User**,
-  **Place all certificates in the following store**, and pick **Trusted Root
-  Certification Authorities**. Restart the browser.
-
-Keep `rootCA-key.pem` (in the same folder) on this Mac only, and never share
-it. `key.pem` is also private; `.gitignore` keeps both `.pem` files out of git.
-
-Everyone playing shares the same saves folder, so two people playing the same
-game at once overwrite each other's progress.
-
-If macOS asks whether Python may accept incoming network connections, choose
-**Allow**.
+Run the last command again if the Mac's network address changes. Keep
+`rootCA-key.pem` (in the folder `mkcert -CAROOT` prints) on this Mac only.
 
 ## Playing without the server (offline)
 
@@ -288,7 +290,9 @@ Chrome tab (web/play.html, play.js)        Web Worker (web/worker.js)
 
 | Path | What it is |
 |---|---|
-| `server.py` | Web server for your home network, HTTPS when `cert.pem` exists (Python standard library only) |
+| `server.py` | Web server for your home network (Python standard library, plus `cryptography` for the certificate) |
+| `certs.py` | Makes the server's own certificate authority and certificate in `tls/` |
+| `web/setup.html` | The page other devices see until they trust the certificate |
 | `web/` | Launcher (`index.html`), game page (`play.html`, `play.js`), worker, built interpreters |
 | `web/fs.js` | The two file systems a game can use: the server, or the copy on the device |
 | `web/store.js`, `download.js`, `sw.js` | Offline play: on-device storage, game downloads, and the service worker that keeps the app itself |
@@ -322,17 +326,20 @@ can change your saves.
 ## Troubleshooting
 
 - **"This page must be served by server.py"**: open the game through
-  <https://localhost:8765>, not as a file.
-- **A game won't start on another device**: use the `https://` address, and
-  install mkcert's `rootCA.pem` on that device (see
-  [Playing on other devices](#playing-on-other-devices)).
+  <http://localhost:8765>, not as a file.
+- **"…couldn't be downloaded. Cannot read properties of undefined (reading
+  'getDirectory')"** or **"Chrome only runs the games on a secure page"**:
+  the device is using a plain `http://` address. Set the device up as in
+  [Playing on other devices](#playing-on-other-devices).
+- **"Some files are missing"** when the server starts: the zip was unzipped
+  without its folders. Unzip it again with **Extract All…**.
 - **The launcher says it can't reach the game server, but the server is
   running** (or the page loads forever): the device doesn't trust the
   certificate. The saved copy of the launcher hides the browser's warning, so
-  this is the only sign. Install `rootCA.pem` on the device and turn on full
-  trust (see [Playing on other devices](#playing-on-other-devices)).
-- **Typing the address without `https://`** is fine: the server forwards
-  plain `http://` visits to `https://`.
+  this is the only sign. Open the `http://` address on the device and follow
+  the setup page (see [Playing on other devices](#playing-on-other-devices)).
+- **Typing the address without `https://`** is fine: once the device is set
+  up, the server forwards plain `http://` visits to `https://`.
 - **Another device can't connect at all**: check the device is on the same
   Wi-Fi, and that the firewall allows Python: on a Mac, System Settings →
   Network → Firewall; on Windows, Windows Security → Firewall & network

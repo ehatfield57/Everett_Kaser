@@ -22,3 +22,6 @@ __pycache__/
 
 # TLS certificate and private key made by mkcert
 *.pem
+
+# The server's own certificate authority and certificate (certs.py); private to this computer
+tls/

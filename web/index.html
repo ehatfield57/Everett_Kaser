@@ -63,6 +63,10 @@
   <input id="filter" type="search" placeholder="Filter games…" autocomplete="off">
 </header>
 <div class="notice" id="offline" hidden><div>Can't reach the game server, so only games stored on this device can be played. Either the server isn't running, or this device doesn't trust its security certificate (see “Playing on other devices” in the README).</div></div>
+<div class="notice" id="insecure" hidden><div>Chrome only lets the games run on a secure page, and this
+  address isn't one. On the computer running the server, use <b>http://localhost:8765</b>. On other devices,
+  open <a id="setupLink" href="/setup">the setup page</a> to trust the server once; if it says the server has
+  no certificate, see “Playing on other devices” in the README.</div></div>
 <div class="notice" id="install" hidden><div>To play without your Mac, add this page to your Home Screen
   (Share&nbsp;→ Add to Home Screen) and play from there. Games downloaded in the browser are stored separately
   from the Home Screen app, and the browser may clear them if you don't visit for a few weeks.</div></div>
@@ -184,6 +188,12 @@ async function load() {
                                           .sort((a, b) => a.name.localeCompare(b.name));
   document.getElementById('offline').hidden = online;
   allBtn.hidden = !online;
+  if (!window.isSecureContext) {         // no storage, shared memory or audio worklet here
+    document.getElementById('insecure').hidden = false;
+    allBtn.hidden = true;
+    keepBox.checked = false;
+    keepBox.disabled = true;
+  }
   for (const g of games) { makeCard(g); refreshCard(g.name); }
   applyFilter();
   showUsage();
@@ -250,29 +260,42 @@ function gameWindow(name) {
   } catch {}
   return null;
 }
-function launch(name) {
+function launch(name, w) {
   const url = '/play?g=' + encodeURIComponent(name);
-  const w = standalone ? null : gameWindow(name);
   if (!w) { location.href = url; return; }     // popups blocked: use this window
-  let fresh = true;
-  try { fresh = w.location.href === 'about:blank'; } catch {}
-  if (fresh) w.location.replace(url);
+  if (isBlank(w)) w.location.replace(url);
   w.focus();
+}
+function isBlank(w) {
+  try { return w.location.href === 'about:blank'; } catch { return false; }
 }
 
 async function openGame(name) {
   if (busy) return;
   const c = cards.get(name);
   const rec = stored.get(name);
-  const play = () => { reloadWhenIdle = false; launch(name); };
+  if (!rec && !online) return;
+  const update = !!(rec && online && c.game.version && rec.version !== c.game.version);
+  const fetchFirst = rec ? update : keepBox.checked;
+  // Open the game's window now, while this still counts as the click.  Chrome
+  // blocks a window opened later, after a download has finished.
+  const w = standalone ? null : gameWindow(name);
+  if (w && fetchFirst && isBlank(w)) {
+    try { w.document.title = name; w.document.body.style.font = '18px system-ui, sans-serif';
+          w.document.body.textContent = `Downloading ${name}…`; } catch {}
+  }
+  const play = () => { reloadWhenIdle = false; launch(name, w); };
   busy = true;
   try {
     if (rec) {
-      if (online && c.game.version && rec.version !== c.game.version) await download(name);
+      if (update) await download(name);
       return play();      // an old copy still plays if the update failed
     }
-    if (!online) return;
-    if (keepBox.checked) { if (await download(name)) play(); return; }
+    if (keepBox.checked) {
+      if (await download(name)) play();
+      else if (w && isBlank(w)) w.close();
+      return;
+    }
     play();               // straight from the server
   } finally { idle(); }
 }

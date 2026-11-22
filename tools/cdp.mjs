@@ -1,7 +1,8 @@
 // Minimal headless-Chrome driver over the DevTools protocol (no dependencies).
 // usage: node cdp.mjs <url> <outdir> [steps.json]
 // steps: [{"wait":ms} | {"shot":"name"} | {"click":[x,y],"button":"left"} | {"key":"a"} | {"eval":"js"} | {"move":[x,y]}
-//         | {"sh":"shell command"} | {"goto":"url"}]
+//         | {"sh":"shell command"} | {"goto":"url"} | {"clickSel":"css selector"} | {"targets":true}]
+// CHROME_ARGS="--flag --flag2" adds Chrome command-line flags.
 // PROFILE=<dir> keeps the browser profile (and anything the site stored) between runs.
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -15,7 +16,8 @@ const W = Number(process.env.W || 1280), H = Number(process.env.H || 800);
 const profile = process.env.PROFILE || fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-'));
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, `--window-size=${W},${H}`,
-  '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required', 'about:blank',
+  '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required',
+  ...(process.env.CHROME_ARGS ? process.env.CHROME_ARGS.split(/\s+/).filter(Boolean) : []), 'about:blank',
 ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
 const wsUrl = await new Promise((res, rej) => {
@@ -54,6 +56,12 @@ for (const s of steps) {
   if (s.sh) { try { logs.push('[sh] ' + execSync(s.sh, { encoding: 'utf8' }).trim()); } catch (err) { logs.push('[sh failed] ' + err.message); } }
   if (s.goto) await cmd('Page.navigate', { url: s.goto });
   if (s.move) await mouse('mouseMoved', ...s.move, 'none');
+  if (s.clickSel) {
+    const r = await cmd('Runtime.evaluate', { expression: `(() => { const b = document.querySelector(${JSON.stringify(s.clickSel)})?.getBoundingClientRect(); return b ? [b.x + b.width / 2, b.y + b.height / 2] : null; })()`, returnByValue: true });
+    s.click = r.result?.result?.value;
+    if (!s.click) logs.push('[clickSel] not found: ' + s.clickSel);
+  }
+  if (s.targets) logs.push('[targets] ' + JSON.stringify((await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).filter((t) => t.type === 'page').map((t) => t.url)));
   if (s.click) { const b = s.button || 'left'; await mouse('mouseMoved', ...s.click, 'none'); await mouse('mousePressed', ...s.click, b); await sleep(60); await mouse('mouseReleased', ...s.click, b); }
   if (s.key) { await cmd('Input.dispatchKeyEvent', { type: 'keyDown', key: s.key, windowsVirtualKeyCode: s.vk || s.key.toUpperCase().charCodeAt(0), text: s.text ?? s.key }); await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: s.key, windowsVirtualKeyCode: s.vk || s.key.toUpperCase().charCodeAt(0) }); }
   if (s.eval) { const r = await cmd('Runtime.evaluate', { expression: s.eval, returnByValue: true, awaitPromise: true }); logs.push('[eval] ' + JSON.stringify(r.result?.result?.value ?? r.result)); }
