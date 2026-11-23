@@ -97,7 +97,15 @@ const cards = new Map();       // name -> {card, a, note, game}
 // ---------------------------------------------------------------- service worker
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('offline support unavailable:', err));
+  navigator.serviceWorker.register('/sw.js').catch((err) => {
+    console.warn('offline support unavailable:', err);
+    // Reached by tapping past Chrome's certificate warning?  Chrome won't
+    // register a service worker then.  If the server answers, that's the
+    // reason: this device doesn't trust it yet, so show how to set it up.
+    if (location.protocol === 'https:' && !hadController) {
+      fetch('/api/ping', { cache: 'no-store' }).then((r) => { if (r.ok) location.replace('/setup'); }, () => {});
+    }
+  });
   // A new version took over: reload once so the page matches it.
   // (Not in the middle of a download, which the reload would cut off.)
   navigator.serviceWorker.addEventListener('controllerchange', () => {

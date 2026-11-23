@@ -134,6 +134,14 @@ gives up (`ERR_TOO_MANY_RETRIES`). On 8766 the `https://` try is refused, so
 Chrome falls back to `http://`. It may first show a "Connection is not secure"
 warning; choose **Continue to site**.
 
+Some versions of Chrome (Android Chrome with that setting on, for one) still
+end with `ERR_TOO_MANY_RETRIES` on 8766. Then open
+`https://192.168.4.45:8765/setup` instead. Chrome warns that the connection
+isn't private: tap **Advanced**, then **Proceed**. The setup page appears with
+the same steps. Once the certificate is installed, the warning goes away.
+(Opening `https://192.168.4.45:8765/` and tapping past the warning also
+leads to the setup page.)
+
 Browsers only let the games run on a **secure (https://) page**, except at
 `localhost` on the computer itself. So the server makes its own security
 certificate the first time it starts (in the `tls` folder; this needs the

@@ -1017,6 +1017,8 @@ def main():
         print(f"Tablets, phones and other computers: open http://{lan[0]}:{sport}/")
         print("   The first time, it shows how to set the device up; after that it goes straight to the games"
               f" (at https://{lan[0]}:{args.port}/).")
+        print(f"   If Chrome says ERR_TOO_MANY_RETRIES, open https://{lan[0]}:{args.port}/setup instead"
+              " and tap Advanced, then Proceed.")
         name = bonjour_name()
         if name:
             print(f"   or, by name (stays the same if the address changes): http://{name}:{sport}/")

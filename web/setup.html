@@ -133,13 +133,19 @@ function ready() {
 }
 
 async function check() {
-  if (location.protocol === 'https:') {   // already on the secure address
-    statusEl.className = 'status ok';
-    statusEl.innerHTML = 'This device is set up. <a href="/">Open the games</a>';
-    return;
-  }
   statusEl.className = 'status';
   statusEl.textContent = 'Checking this device…';
+  if (location.protocol === 'https:') {
+    // Reached over https:// by tapping past Chrome's certificate warning (the
+    // way in when "Always use secure connections" blocks the http:// address).
+    // Such a page loads, but Chrome refuses to register a service worker on it,
+    // so a successful registration means the certificate really is trusted.
+    try {
+      await navigator.serviceWorker.register('/sw.js');
+      return ready();
+    } catch {}
+    return notYet();
+  }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 5000);
   try {
@@ -148,6 +154,10 @@ async function check() {
     return ready();
   } catch {
   } finally { clearTimeout(timer); }
+  notYet();
+}
+
+function notYet() {
   statusEl.className = 'status no';
   statusEl.textContent = 'Not set up yet. Follow the steps below.';
   document.getElementById('steps').hidden = false;
