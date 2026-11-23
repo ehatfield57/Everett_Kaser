@@ -11,7 +11,7 @@ const DATA = 'data';            // game list, icons, sound bank: kept across ver
 
 const SHELL_FILES = [
   '/', '/play', '/manifest.webmanifest',
-  '/web/play.js', '/web/worker.js', '/web/store.js', '/web/fs.js', '/web/download.js',
+  '/web/play.js', '/web/upscale.js', '/web/worker.js', '/web/store.js', '/web/fs.js', '/web/download.js',
   '/web/kint5.js', '/web/kint5.wasm', '/web/kint6.js', '/web/kint6.wasm',
   '/web/vendor/spessasynth.js', '/web/vendor/spessasynth_processor.min.js',
 ];

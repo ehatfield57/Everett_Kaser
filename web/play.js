@@ -225,6 +225,39 @@ function placeCanvas(s, tx, ty) {
   const p = s * (window.devicePixelRatio || 1);
   canvas.style.imageRendering = p >= 2.5 || Math.abs(p - Math.round(p)) < 0.01 ? 'pixelated' : 'auto';
   document.getElementById('zoomBtn').classList.toggle('show', zoomed());
+  placeHQ(s, tx, ty, p);
+}
+
+// ----------------------------------------------------- smooth zoom (xBR)
+// Zoomed in far enough that each game pixel covers 2 or more screen pixels,
+// upscale.js redraws the screen with smoothed edges, laid over the game
+// canvas (which stays in place, invisible, for touches).  The ✦ button turns
+// it off and on; the choice is kept for all games.
+const HQ_PREF = 'kaser.hq';
+let hqOn = true;
+try { hqOn = localStorage.getItem(HQ_PREF) !== '0'; } catch {}
+let upscaler;                    // created the first time it's needed; null = can't
+function placeHQ(s, tx, ty, p) {
+  const want = zoomed() && p >= 2;
+  document.getElementById('hqBtn').classList.toggle('show', want && upscaler !== null);
+  if (want && hqOn && upscaler === undefined) {
+    upscaler = window.Upscaler ? window.Upscaler.create(canvas) : null;
+    if (upscaler) document.body.insertBefore(upscaler.canvas, canvas.nextSibling);
+    else document.getElementById('hqBtn').classList.remove('show');
+  }
+  if (want && hqOn && upscaler && upscaler.show(s, tx, ty)) {
+    canvas.style.opacity = '0';
+  } else {
+    if (upscaler) upscaler.hide();
+    canvas.style.opacity = '';
+  }
+}
+function setHQ(on) {
+  hqOn = on;
+  try { localStorage.setItem(HQ_PREF, on ? '1' : '0'); } catch {}
+  document.getElementById('hqBtn').classList.toggle('on', on);
+  hint(on ? 'Smooth zoom' : 'Square pixels');
+  relayout();
 }
 // The window or the game screen changed size: keep the same zoom and spot.
 function relayout() {
@@ -252,7 +285,11 @@ worker.onmessage = (e) => {
     case 'frame':
       if (statusEl.isConnected) { statusEl.remove(); firstFrame(); }
       sizeCanvas(m.cw, m.ch);
-      ctx.putImageData(new ImageData(new Uint8ClampedArray(m.buf), m.w, m.h), m.x, m.y);
+      {
+        const img = new ImageData(new Uint8ClampedArray(m.buf), m.w, m.h);
+        ctx.putImageData(img, m.x, m.y);
+        if (upscaler) upscaler.update(img, m.x, m.y);
+      }
       break;
     case 'sound': playSound(m.bytes, m.nostop); break;
     case 'soundstop': stopSound(); break;
@@ -652,6 +689,10 @@ const zoomBtn = document.getElementById('zoomBtn');
 zoomBtn.addEventListener('pointerdown', (e) => e.preventDefault());
 zoomBtn.addEventListener('click', zoomOut);
 zoomBtn.classList.toggle('show', zoomed());
+const hqBtn = document.getElementById('hqBtn');
+hqBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+hqBtn.addEventListener('click', () => setHQ(!hqOn));
+hqBtn.classList.toggle('on', hqOn);
 
 // The first time a game is shown on a phone, say how to zoom.
 function firstFrame() {

@@ -60,6 +60,11 @@ Tips:
     you can tap and drag as usual. Move two fingers together to look around.
     While zoomed in, **⊖** goes straight back to the whole screen. Each game
     remembers its zoom.
+  - **Smooth zoom (✦):** zoomed in, the screen is redrawn with a pixel-art
+    upscaler (xBR, in `web/upscale.js`), so edges, icons and text look
+    smooth instead of blocky. It can't add detail the game's pictures don't
+    have. **✦** (shown while zoomed in) switches between smooth and square
+    pixels; the choice applies to every game.
 - **iPhone:** the games are laid out for a desktop-sized window, so on a phone
   the game gets a screen at least 1024×720 (the shape of the phone), shrunk
   to fit; zoom in to tap the small icons. Landscape works best.

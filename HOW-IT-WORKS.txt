@@ -161,6 +161,7 @@ Touch on the iPad
   Spread / pinch two fingers zoom in / out (stays zoomed when you let go)
   Move two fingers           look around while zoomed in
   Zoom-out button (circled minus)    back to the whole screen
+  Star button (shown while zoomed)   smooth zoom on/off
   On an iPhone the game is laid out at desktop size and shrunk to fit;
   zoom in to reach the small icons.
 
