@@ -662,6 +662,15 @@ def lan_addresses() -> list[str]:
     return out
 
 
+def cert_addresses(path) -> set[str]:
+    """The IP addresses a certificate file is good for (empty if it can't be read)."""
+    try:
+        info = ssl._ssl._test_decode_cert(str(path))
+    except Exception:
+        return set()
+    return {v for k, v in info.get("subjectAltName", ()) if k == "IP Address"}
+
+
 def mkcert_ca() -> Path | None:
     """mkcert's root certificate, when the user's own cert.pem came from mkcert."""
     try:
@@ -974,6 +983,14 @@ def main():
     if not args.http:
         if Path(args.cert).exists() and Path(args.key).exists():
             cert, key, own_cert = args.cert, args.key, True
+            missing = [ip for ip in lan if ip not in cert_addresses(cert)]
+            if missing:
+                print(f"Note: {Path(cert).name} doesn't cover this computer's address {', '.join(missing)}, so\n"
+                      f"  https://{missing[0]}:{args.port}/ gives a certificate warning (other devices too).\n"
+                      "  Make a new one that includes it, for example:\n"
+                      f"    mkcert -cert-file {Path(cert).name} -key-file {Path(key).name} "
+                      f"{(bonjour_name() or '') + ' ' if IS_MAC else ''}localhost 127.0.0.1 {' '.join(lan)}\n"
+                      "  (add any other names and addresses you use), then start the server again.")
         elif not args.local:
             if certs.available():
                 try:

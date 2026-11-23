@@ -163,6 +163,30 @@ function notYet() {
   document.getElementById('steps').hidden = false;
 }
 document.getElementById('again').addEventListener('click', check);
+
+// Past Chrome's certificate warning (the https:// way in), Chrome won't
+// download files from the server: the download just stalls.  But the page can
+// still fetch the certificate itself, so hand it to Chrome as a local file.
+document.querySelector('#dlrow a').addEventListener('click', async (e) => {
+  if (location.protocol !== 'https:') return;            // plain http downloads fine
+  e.preventDefault();
+  const link = e.currentTarget;
+  try {
+    const r = await fetch(link.getAttribute('href'), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = new Blob([await r.arrayBuffer()], { type: 'application/x-x509-ca-cert' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kaser-games-certificate.crt';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  } catch (err) {
+    statusEl.className = 'status no';
+    statusEl.textContent = 'Could not get the certificate (' + err.message + '). Try again.';
+  }
+});
 check();
 </script>
 </body>
