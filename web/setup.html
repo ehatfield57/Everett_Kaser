@@ -107,7 +107,10 @@
 'use strict';
 const HAS_CA = __HAS_CA__;
 const statusEl = document.getElementById('status');
-const host = location.host;
+// The games are on the https port.  This page may have come from the setup
+// port (the one after it), which only serves this page.
+const HTTPS_PORT = '__HTTPS_PORT__';
+const host = location.hostname + (HTTPS_PORT === '443' ? '' : ':' + HTTPS_PORT);
 // Where to go once this device is ready: the page that was asked for.
 const next = (location.pathname === '/setup' ? '/' : location.pathname) + location.search;
 const target = 'https://' + host + next;

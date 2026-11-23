@@ -123,8 +123,16 @@ Prompt in this folder.
 
 The server accepts connections from any device on your home network. When it
 starts it prints the address for other devices, for example
-`http://192.168.4.45:8765/`. Open that address on the phone, tablet or other
-computer.
+`http://192.168.4.45:8766/`. Open that address on the phone, tablet or other
+computer. Port 8766 is only for setting a device up; the games themselves are
+at `https://192.168.4.45:8765/`, and the setup page takes you there.
+
+Port 8766 serves plain `http://` and nothing else, which matters for Chrome's
+**Always use secure connections** setting: that setting tries `https://`
+first, and on 8765 it meets a certificate the device doesn't trust yet and
+gives up (`ERR_TOO_MANY_RETRIES`). On 8766 the `https://` try is refused, so
+Chrome falls back to `http://`. It may first show a "Connection is not secure"
+warning; choose **Continue to site**.
 
 Browsers only let the games run on a **secure (https://) page**, except at
 `localhost` on the computer itself. So the server makes its own security
@@ -149,7 +157,7 @@ once:
      Certification Authorities; Mac: Keychain Access → Always Trust).
 2. Tap **Check again**. Once the device trusts the server, the page goes
    straight to the games, at the `https://` address. From then on the
-   `http://` address forwards there by itself.
+   `http://` setup address forwards there by itself.
 
 The certificate's secret key (`tls/ca-key.pem`) never leaves this computer;
 don't share it. When the computer's network address changes, the server

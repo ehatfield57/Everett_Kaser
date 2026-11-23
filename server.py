@@ -562,6 +562,7 @@ class Server(ThreadingHTTPServer):
     verbose = False
     ssl_ctx: ssl.SSLContext | None = None   # set when serving HTTPS
     ca_cert: Path | None = None             # the certificate devices install to trust us
+    https_port = 0                          # where the games are served over https
 
     def finish_request(self, request, client_address):
         # Runs in the connection's own thread, so one slow or stuck device
@@ -593,6 +594,24 @@ class Server(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+class SetupServer(Server):
+    """Plain-http port that only shows the setup page and hands out the CA.
+
+    Chrome's "Always use secure connections" turns http://<address>:8765 into
+    https://, and while the device doesn't trust our certificate yet that ends
+    in ERR_TOO_MANY_RETRIES, so the device never sees the setup page.  This
+    port refuses https outright (it closes any TLS handshake), which makes
+    Chrome fall back to http:// (asking first in that mode)."""
+
+    def finish_request(self, request, client_address):
+        request.settimeout(30)
+        first = request.recv(1, socket.MSG_PEEK)
+        if not first or first == b"\x16":     # nothing, or a TLS handshake: hang up
+            return
+        request.settimeout(None)
+        ThreadingHTTPServer.finish_request(self, request, client_address)
+
+
 class DualStackServer(Server):
     """Listens on IPv6 and IPv4 at once.  The Mac's Bonjour name (<name>.local)
     resolves to IPv6 addresses too, and some devices try those first."""
@@ -603,13 +622,17 @@ class DualStackServer(Server):
         super().server_bind()
 
 
-def make_server(local: bool, port: int) -> Server:
+def make_server(local: bool, port: int, setup: bool = False) -> Server:
     if local:
         return Server(("127.0.0.1", port), Handler)
     try:
+        if setup:
+            class S(SetupServer, DualStackServer):
+                pass
+            return S(("::", port), Handler)
         return DualStackServer(("::", port), Handler)
     except OSError:
-        return Server(("0.0.0.0", port), Handler)   # no IPv6 on this Mac
+        return (SetupServer if setup else Server)(("0.0.0.0", port), Handler)   # no IPv6 here
 
 
 def bonjour_name() -> str | None:
@@ -706,7 +729,10 @@ class Handler(BaseHTTPRequestHandler):
     def plain_from_elsewhere(self) -> bool:
         """True for an http:// request from another device while we serve HTTPS.
         Chrome won't run the games on such a page, so it only gets the setup page
-        (which forwards to https:// once the device trusts our certificate)."""
+        (which forwards to https:// once the device trusts our certificate).
+        Everything on the setup port counts, wherever it comes from."""
+        if isinstance(self.server, SetupServer):
+            return True
         if self.server.ssl_ctx is None or isinstance(self.connection, ssl.SSLSocket):
             return False
         ip = self.client_address[0]
@@ -729,6 +755,7 @@ class Handler(BaseHTTPRequestHandler):
     def send_setup(self):
         page = (WEB_DIR / "setup.html").read_text(encoding="utf-8")
         page = page.replace("__HAS_CA__", "true" if self.server.ca_cert else "false")
+        page = page.replace("__HTTPS_PORT__", str(self.server.https_port))
         self.send_bytes(page.encode(), "text/html; charset=utf-8")
 
     # -- routing
@@ -967,6 +994,15 @@ def main():
         ctx.load_cert_chain(cert, key)
         httpd.ssl_ctx = ctx
         httpd.ca_cert = mkcert_ca() if own_cert else certs.CA_CERT
+        httpd.https_port = args.port
+    setupd = None
+    if lan and cert:
+        try:
+            setupd = make_server(False, args.port + 1, setup=True)
+            setupd.ca_cert, setupd.https_port, setupd.verbose = httpd.ca_cert, args.port, args.verbose
+            threading.Thread(target=setupd.serve_forever, daemon=True).start()
+        except OSError as err:
+            print(f"Couldn't open the setup port {args.port + 1} ({err}).")
 
     url = f"{'https' if own_cert else 'http'}://localhost:{args.port}/"
     print(f"Found {len(GAMES)} games.  On this computer, open {url}  (Ctrl+C to stop)")
@@ -977,11 +1013,13 @@ def main():
         print("  No General MIDI sound bank found, so there will be no music "
               "(put one next to server.py as soundbank.sf2).")
     if lan and cert:
-        print(f"Tablets, phones and other computers: open http://{lan[0]}:{args.port}/")
-        print("   The first time, it shows how to set the device up; after that it goes straight to the games.")
+        sport = args.port + 1 if setupd else args.port
+        print(f"Tablets, phones and other computers: open http://{lan[0]}:{sport}/")
+        print("   The first time, it shows how to set the device up; after that it goes straight to the games"
+              f" (at https://{lan[0]}:{args.port}/).")
         name = bonjour_name()
         if name:
-            print(f"   or, by name (stays the same if the address changes): http://{name}:{args.port}/")
+            print(f"   or, by name (stays the same if the address changes): http://{name}:{sport}/")
     if args.open:
         if IS_MAC:
             subprocess.run(["open", "-a", "Google Chrome", url], check=False)

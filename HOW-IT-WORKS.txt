@@ -125,6 +125,14 @@ moves to the https:// address. After that, the http:// address forwards
 there by itself. The computer running the server can always use
 http://localhost, so it needs no setup.
 
+The address the server prints for other devices uses the next port up
+(http://192.168.1.20:8766), which only ever shows the setup page.
+Chrome's "Always use secure connections" setting tries https:// before
+http://. On port 8765 that attempt meets the certificate the device
+doesn't trust yet, and Chrome gives up with ERR_TOO_MANY_RETRIES. Port
+8766 hangs up on any https:// attempt, so Chrome falls back to http://
+(after asking, in that mode) and the setup page appears.
+
 On an iPad, skipping the "full trust" step (Settings > General > About >
 Certificate Trust Settings) causes a confusing symptom: the launcher
 runs from the service worker's copy, so no warning appears. The page
