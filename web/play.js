@@ -162,8 +162,16 @@ function gameSize(w, h) {
   const f = isPhone ? Math.max(1, PHONE_MIN_W / w, PHONE_MIN_H / h) : 1;
   return { w: Math.round(w * f), h: Math.round(h * f) };
 }
+// The part of the window the game may use: clear of the status bar and home bar
+// (#safe in play.html is placed by the safe-area insets).
+function area() {
+  const r = document.getElementById('safe').getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+}
 function viewSize() {
-  return gameSize(Math.max(1, Math.floor(window.innerWidth)), Math.max(1, Math.floor(window.innerHeight)));
+  const a = area();
+  return gameSize(Math.max(1, Math.floor(a.w)), Math.max(1, Math.floor(a.h)));
 }
 // The largest game screen either way up, so turning the phone never needs more than the game set aside.
 function screenSize() {
@@ -193,16 +201,23 @@ try {
   if (v && v.z > 1) Object.assign(zoom, { z: +v.z, cx: +v.cx, cy: +v.cy });
 } catch {}
 function fitScale() {
-  return Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height, 1);
+  const a = area();
+  return Math.min(a.w / canvas.width, a.h / canvas.height, 1);
 }
 function zoomed() { return zoom.z > 1.001; }
 // Show the canvas at scale s with its corner at (tx, ty), kept on screen.
 function placeCanvas(s, tx, ty) {
-  const W = window.innerWidth, H = window.innerHeight, fit = fitScale();
+  const a = area(), fit = fitScale();
   s = Math.min(Math.max(s, fit), Math.max(fit, MAX_SCALE));
   const cw = canvas.width * s, ch = canvas.height * s;
-  tx = cw <= W ? (W - cw) / 2 : Math.min(0, Math.max(W - cw, tx));
-  ty = ch <= H ? (H - ch) / 2 : Math.min(0, Math.max(H - ch, ty));
+  if (s / fit <= 1.001) {
+    // whole game showing: keep it out of the status bar strip
+    tx = a.x + (a.w - cw) / 2;
+    ty = a.y + (a.h - ch) / 2;
+  }
+  const W = window.innerWidth, H = window.innerHeight;
+  tx = cw <= W ? Math.max(0, Math.min(W - cw, tx)) : Math.min(0, Math.max(W - cw, tx));
+  ty = ch <= H ? Math.max(0, Math.min(H - ch, ty)) : Math.min(0, Math.max(H - ch, ty));
   zoom.z = s / fit; zoom.cx = (W / 2 - tx) / cw; zoom.cy = (H / 2 - ty) / ch;
   canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
   // Square pixels when each game pixel covers a whole number of screen pixels

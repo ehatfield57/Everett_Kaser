@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Loading…</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
@@ -28,7 +28,14 @@
                         background: #fff; color: #222; text-decoration: none; cursor: pointer; }
   #box button.primary { background: #2a5d9f; border-color: #2a5d9f; color: #fff; }
   /* touch-screen helpers: on-screen keyboard and swipe-for-arrow-keys */
-  #touchbar { position: fixed; right: 6px; bottom: 6px; display: none; gap: 6px; z-index: 5; }
+  /* the part of the window clear of the iPad's status bar and home bar; play.js
+     reads its size and keeps the game inside it, since iPadOS 26 blurs what's
+     drawn under the status bar */
+  #safe { position: fixed; visibility: hidden; pointer-events: none;
+          top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px);
+          right: env(safe-area-inset-right, 0px); bottom: env(safe-area-inset-bottom, 0px); }
+  #touchbar { position: fixed; right: calc(6px + env(safe-area-inset-right, 0px));
+              bottom: calc(6px + env(safe-area-inset-bottom, 0px)); display: none; gap: 6px; z-index: 5; }
   #touchbar.show { display: flex; }
   #touchbar button { width: 40px; height: 40px; border-radius: 9px; border: 1px solid rgba(255,255,255,.5);
                      background: rgba(30,30,30,.45); color: #fff; font: 20px/1 -apple-system, sans-serif;
@@ -47,6 +54,7 @@
 </style>
 </head>
 <body>
+<div id="safe"></div>
 <canvas id="screen" tabindex="0"></canvas>
 <div id="status">Starting…</div>
 <div id="touchbar">
