@@ -46,7 +46,7 @@ const cmd = (method, params = {}, sessionId) => new Promise((res) => {
 });
 await cmd('Runtime.enable'); await cmd('Log.enable'); await cmd('Page.enable');
 await cmd('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
-await cmd('Page.navigate', { url });
+{ const r = await cmd('Page.navigate', { url }); if (r.result?.errorText) logs.push('[navigate] ' + r.result.errorText); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function mouse(type, x, y, button = 'left', clickCount = 1) {
   await cmd('Input.dispatchMouseEvent', { type, x, y, button, clickCount, buttons: type === 'mousePressed' ? (button === 'right' ? 2 : 1) : 0 });
@@ -54,7 +54,7 @@ async function mouse(type, x, y, button = 'left', clickCount = 1) {
 for (const s of steps) {
   if (s.wait) await sleep(s.wait);
   if (s.sh) { try { logs.push('[sh] ' + execSync(s.sh, { encoding: 'utf8' }).trim()); } catch (err) { logs.push('[sh failed] ' + err.message); } }
-  if (s.goto) await cmd('Page.navigate', { url: s.goto });
+  if (s.goto) { const r = await cmd('Page.navigate', { url: s.goto }); if (r.result?.errorText) logs.push('[navigate] ' + r.result.errorText); }
   if (s.move) await mouse('mouseMoved', ...s.move, 'none');
   if (s.clickSel) {
     const r = await cmd('Runtime.evaluate', { expression: `(() => { const b = document.querySelector(${JSON.stringify(s.clickSel)})?.getBoundingClientRect(); return b ? [b.x + b.width / 2, b.y + b.height / 2] : null; })()`, returnByValue: true });
