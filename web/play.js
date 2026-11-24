@@ -167,7 +167,23 @@ function gameSize(w, h) {
 function area() {
   const r = document.getElementById('safe').getBoundingClientRect();
   if (r.width < 1 || r.height < 1) return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
-  return { x: r.left, y: r.top, w: r.width, h: r.height };
+  // iPadOS 26 blurs the top ~30px of a Home Screen app's window (its glass
+  // edge effect), even though the status bar sits above the window, and it
+  // reports no safe-area inset for it.  So keep that strip clear ourselves.
+  const top = Math.max(r.top, ipadTopGap());
+  return { x: r.left, y: top, w: r.width, h: r.bottom - top };
+}
+const IPAD_EDGE_BLUR = 32;    // measured from a photo: the blur covered the game's ~30px top row
+const IPAD_STATUS_BAR = 32;   // its height on an iPad Pro 11" (window 802 of 834 in landscape)
+function ipadTopGap() {
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  if (!standalone || isPhone || !(navigator.maxTouchPoints > 0)) return 0;
+  // Only iPads (which call themselves Macintosh); Android has no such blur.
+  if (!/Macintosh|iPad/.test(navigator.userAgent)) return 0;
+  // If the window ever covers the whole screen, the status bar is over it too.
+  const landscape = window.innerWidth > window.innerHeight;
+  const fullH = landscape ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+  return window.innerHeight >= fullH - 1 ? IPAD_STATUS_BAR + IPAD_EDGE_BLUR : IPAD_EDGE_BLUR;
 }
 function viewSize() {
   const a = area();
