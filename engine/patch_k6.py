@@ -397,7 +397,21 @@ def make_kmain6():
                 "///===============================================================\n/// When an exception (CRASH!) occurs", "loader+queue"),
         between(s, "/**=======================================================================\nNonHeap memory starts", None, "heap"),
     ]
-    write("kmain6.c", KMAIN_PRELUDE + "\n".join(parts))
+    s = KMAIN_PRELUDE + "\n".join(parts)
+    # Newer KINT 6 (as in Sherlock7's Mac app) keeps the KINT version a .KE was
+    # built for as three 16-bit words at 0x110/0x112/0x114 (zero in older .KE
+    # files), and bytes 0xDA/0xDB now hold the game's own version (Sherlock7
+    # is 7.0), so the 6.3 check below wrongly refuses such games.
+    s = replace_once(s, """	if( (BytBuf[KEHED_MAJORREV] < 0)
+	 || (BytBuf[KEHED_MAJORREV] > INTERP_MAJORREV)
+	 || (BytBuf[KEHED_MAJORREV]==INTERP_MAJORREV
+		 && BytBuf[KEHED_MINORREV] > INTERP_MINORREV) ) {""", """	/* WEB PORT: the newer check, against the KINT version at 0x110 */
+	if( *(WORD*)(BytBuf+0x110) > INTERP_MAJORREV
+	 || (*(WORD*)(BytBuf+0x110)==INTERP_MAJORREV
+		 && (*(WORD*)(BytBuf+0x112) > INTERP_MINORREV
+		  || (*(WORD*)(BytBuf+0x112)==INTERP_MINORREV
+			  && *(WORD*)(BytBuf+0x114) > INTERP_MICROREV))) ) {""", "KE version check")
+    write("kmain6.c", s)
 
 
 def main():
