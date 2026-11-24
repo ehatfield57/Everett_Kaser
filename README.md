@@ -10,8 +10,9 @@ Windows PC (using the Windows versions; see [Running on Windows](#running-on-win
 Any device with a modern browser can then play: the computer itself, an
 iPad or iPhone, an Android phone or tablet, or another computer.
 
-All 40 games work: 37 on KINT 5, plus Crocotile, Lair of Moriarty and
-Occam's Quilt on KINT 6.
+All 41 games work: 34 on KINT 5, and 7 on KINT 6 (Sherlock7, Crocotile,
+Descartes Enigma, Descartes Rainbow, Honeycomb Hotel 3, Lair of Moriarty and
+Occam's Quilt).
 
 ## Playing
 
