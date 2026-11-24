@@ -1,5 +1,6 @@
 # Your game installs and personal data
-games/
+games/*
+!games/README.txt
 saves/
 
 # Everett Kaser's KINT source and downloads (personal-use license: don't redistribute)
