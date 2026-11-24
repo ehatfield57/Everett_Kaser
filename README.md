@@ -53,8 +53,9 @@ Tips:
     character with the keys. A flick is one press, a longer swipe presses
     once for about every half inch your finger travels, and holding your
     finger still after a swipe repeats the key. Taps and touch-and-hold
-    still click; dragging is off while it's on. It starts on for Hero's
-    Hearts, Hero's Friends and Hero Defiant; each game remembers your choice.
+    still click; dragging is off while it's on. It starts on for Falling
+    Hero, Hero's Hearts, Hero's Friends and Hero Defiant; each game remembers
+    your choice.
   - **Zoom:** spread two fingers to magnify the spot between them, and pinch
     them together to shrink it again; it stays zoomed when you let go, so
     you can tap and drag as usual. Move two fingers together to look around.
@@ -160,8 +161,9 @@ once:
    - **Android:** download it, then Settings → search for **CA certificate**
      (usually Security → More security settings → Encryption & credentials →
      Install a certificate → CA certificate) → Install anyway → pick
-     `kaser-games-certificate.crt`. Android only allows this when the device
-     has a screen lock.
+     `kaser-games-certificate.crt` (if the file picker doesn't list it, use
+     its search to find it). Android only allows this when the device has a
+     screen lock.
    - **iPhone / iPad:** use **Safari** for this step. Download it and allow
      it, then Settings → **Profile Downloaded** → Install, and turn it on in
      Settings → General → About → **Certificate Trust Settings**.
@@ -207,14 +209,23 @@ Run the last command again if the Mac's network address changes. Keep
 ## Playing without the server (offline)
 
 A browser can keep its own copy of a game, so it keeps working when the
-server is stopped or the Mac is off. This is meant for the iPad.
+server is stopped or the computer is off. This is meant for tablets and
+phones.
 
-1. On the iPad, open the server's address in Chrome or Safari, then tap the
-   **Share** button (in Chrome it's in the address bar) and choose **Add to
-   Home Screen**. From then on, open **Kaser Games** from the
-   Home Screen. A Home Screen app keeps its games for good. The browser itself
-   may clear stored games after a few weeks without a visit, and it stores
-   them separately from the Home Screen app.
+1. Put the game list on the device's home screen, and from then on open
+   **Kaser Games** from there:
+   - **iPad / iPhone:** open the server's address in Chrome or Safari, tap
+     the **Share** button (in Chrome it's in the address bar) and choose
+     **Add to Home Screen**.
+   - **Android:** open the server's address in Chrome, then tap the
+     **install** icon in the address bar if there is one, or the **⋮** menu →
+     **Add to Home screen** (or **Install app**). The ⋮ menu's **download**
+     arrow is something else: it saves a snapshot of the page (a `.mht`
+     file) that can't play the games.
+
+   A home screen app keeps its games for good. The browser itself may clear
+   stored games after a few weeks without a visit, and it stores them
+   separately from the home screen app.
 2. With the server running, tap a game. The first time, it downloads (a bar
    shows progress) and then starts. The card then says **On this device**.
    **Download all games** at the bottom fetches every game, about 2 GB.
@@ -225,13 +236,13 @@ Details:
 
 - **Saves:** the first download of a game also copies its saves from
   `saves/<game>/`, so you carry on where you were. After that the device keeps
-  its own saves; they are **not** copied back to the Mac (yet).
+  its own saves; they are **not** copied back to the computer (yet).
   Removing a game (the **×** on its card) keeps its saves on the device.
-- **Updates:** if a game's files on the Mac change, its card says **Update
+- **Updates:** if a game's files on the computer change, its card says **Update
   available** and the next tap downloads it again. Changes to the app itself
   (`web/`) reach the device automatically the next time it opens the home page
   while the server is running.
-- **On the Mac itself** (`localhost`) games aren't downloaded unless you tick
+- **On the computer itself** (`localhost`) games aren't downloaded unless you tick
   **Keep games on this device when I play them** at the bottom of the home
   page; on other devices that box starts ticked.
 - Games that aren't downloaded still play straight from the server, as before.

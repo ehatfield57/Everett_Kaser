@@ -679,7 +679,7 @@ function setSwipe(on, announce) {
 swipeBtn.addEventListener('pointerdown', (e) => e.preventDefault());
 swipeBtn.addEventListener('click', () => setSwipe(!swipeMode, true));
 // Games where the keys move a hero start with swipes as arrow keys; the ✥ button changes it.
-const ARROW_GAMES = ["Hero's Hearts", "Hero's Friends", 'Hero Defiant'];
+const ARROW_GAMES = ['Falling Hero', "Hero's Hearts", "Hero's Friends", 'Hero Defiant'];
 swipeMode = ARROW_GAMES.includes(GAME);
 try { const v = localStorage.getItem(SWIPE_PREF); if (v !== null) swipeMode = v === '1'; } catch {}
 setSwipe(swipeMode, false);

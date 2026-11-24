@@ -3,6 +3,7 @@
 // steps: [{"wait":ms} | {"shot":"name"} | {"click":[x,y],"button":"left"} | {"key":"a"} | {"eval":"js"} | {"move":[x,y]}
 //         | {"sh":"shell command"} | {"goto":"url"} | {"clickSel":"css selector"} | {"targets":true}]
 // CHROME_ARGS="--flag --flag2" adds Chrome command-line flags.
+// W, H set the window size; MOBILE=1 emulates a phone (viewport tags apply), DPR sets its pixel ratio.
 // PROFILE=<dir> keeps the browser profile (and anything the site stored) between runs.
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -45,7 +46,7 @@ const cmd = (method, params = {}, sessionId) => new Promise((res) => {
   const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params, sessionId }));
 });
 await cmd('Runtime.enable'); await cmd('Log.enable'); await cmd('Page.enable');
-await cmd('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
+await cmd('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: Number(process.env.DPR || 1), mobile: !!process.env.MOBILE });
 { const r = await cmd('Page.navigate', { url }); if (r.result?.errorText) logs.push('[navigate] ' + r.result.errorText); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function mouse(type, x, y, button = 'left', clickCount = 1) {

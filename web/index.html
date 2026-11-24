@@ -317,8 +317,17 @@ async function openGame(name) {
   // blocks a window opened later, after a download has finished.
   const w = standalone ? null : gameWindow(name);
   if (w && fetchFirst && isBlank(w)) {
-    try { w.document.title = name; w.document.body.style.font = '18px system-ui, sans-serif';
-          w.document.body.textContent = `Downloading ${name}…`; } catch {}
+    // A blank window has no viewport tag, so a phone lays it out at desktop
+    // width and the message comes out tiny: add one.
+    try {
+      const d = w.document;
+      d.title = name;
+      const meta = d.createElement('meta');
+      meta.name = 'viewport'; meta.content = 'width=device-width, initial-scale=1';
+      d.head.append(meta);
+      d.body.style.font = '18px system-ui, sans-serif';
+      d.body.textContent = `Downloading ${name}…`;
+    } catch {}
   }
   const play = () => { reloadWhenIdle = false; launch(name, w); };
   busy = true;
