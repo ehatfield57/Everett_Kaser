@@ -289,9 +289,50 @@ How it differs from `server.py`:
   need (cross-origin isolation), which `server.py` sends itself. On the very
   first visit the game page reloads itself once to pick them up.
 - Like `server.py`, it only runs on a secure page: `http://localhost` on this
-  computer, or `https://` anywhere else. Python's built-in server can't do
-  `https://`, so to try it on an iPad or phone, the site has to be on a
-  real `https://` host.
+  computer, or `https://` anywhere else (see below for other devices).
+
+### The static site on an iPad, iPhone or Android device
+
+Other devices on your Wi-Fi need `https://`. Python 3.14 and newer can serve
+it themselves (check with `python3 --version`), using the same certificate
+`server.py` uses, which your devices already trust if they play from
+`server.py` over the network. In Terminal:
+
+```
+cd static
+python3 -m http.server 8443 --tls-cert ../cert.pem --tls-key ../key.pem \
+  -H Cross-Origin-Opener-Policy same-origin -H Cross-Origin-Embedder-Policy require-corp
+```
+
+That's for an mkcert certificate (`cert.pem` and `key.pem`; see
+[Playing on other devices](#playing-on-other-devices)). If `server.py` made
+its own certificate instead, use `--tls-cert ../tls/server.pem --tls-key
+../tls/server-key.pem`; run `server.py` once first if the address of this
+computer has changed, so it renews the certificate for the new address.
+
+The two `-H` lines send the security headers the games need. The page's
+service worker adds them too, but sending them from the server is surer,
+especially in Safari. The server listens on your whole network while it runs,
+like `server.py`; press **Ctrl+C** to stop it.
+
+Then, on the device:
+
+1. Open `https://192.168.1.20:8443/` (this computer's address; `server.py`
+   prints it when it starts). There should be no certificate warning.
+2. Install it as an app: on iPad or iPhone, Share → **Add to Home Screen**;
+   on Android, **Install app** on the page or in Chrome's ⋮ menu.
+3. Open the app and download the games from inside it. A Home Screen app
+   has its own storage, separate from Safari's.
+
+After that the games play from the app with this computer turned off.
+
+Keep the address the same. The browser keeps games and saves for each
+address, port included, so if this computer's address changes, the app
+opens empty (the old games and saves are still stored, under the old
+address). Give this computer a fixed address in your router's settings, and
+on a Mac set **Private Wi-Fi address** to **Fixed** for your network. This site
+is also separate from the `server.py` one on port 8765, with its own games and
+saves; **Export saves** and **Import saves** move progress between them.
 
 `static/` holds copies of the games and macOS's own sound bank, so it's left
 out of git. Don't put it anywhere public unless Everett says so; a public site
