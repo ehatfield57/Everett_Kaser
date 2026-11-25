@@ -67,6 +67,12 @@ Tips:
     smooth instead of blocky. It can't add detail the game's pictures don't
     have. **✦** (shown while zoomed in) switches between smooth and square
     pixels; the choice applies to every game.
+  - **Full screen (⤢, Android):** hides Chrome's address bar and the phone's
+    status and navigation bars, leaving the whole screen to the game. Tap it
+    again, or swipe in from the edge and press Back, to leave full screen.
+    It isn't shown on iPad or iPhone, or in the installed **Kaser Games**
+    app on Android, which already opens full screen (see "Playing without
+    the server" below).
 - **iPhone:** the games are laid out for a desktop-sized window, so on a phone
   the game gets a screen at least 1024×720 (the shape of the phone), shrunk
   to fit; zoom in to tap the small icons. Landscape works best.
@@ -223,6 +229,11 @@ phones.
      **Add to Home screen** (or **Install app**). The ⋮ menu's **download**
      arrow is something else: it saves a snapshot of the page (a `.mht`
      file) that can't play the games.
+     Choose **Install app** if it's offered: the installed app opens full
+     screen, with no address bar and the phone's bars hidden. Chrome only
+     offers it on the `https://` address once the device trusts the
+     certificate; **Add to Home screen** on its own makes a shortcut that
+     opens in an ordinary Chrome tab.
 
    A home screen app keeps its games for good. The browser itself may clear
    stored games after a few weeks without a visit, and it stores them

@@ -123,7 +123,8 @@ keepBox.checked = keepGames();
 keepBox.addEventListener('change', () => { try { localStorage.setItem('keepGames', keepBox.checked ? '1' : '0'); } catch {} });
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+// An installed app: iPad/iPhone Home Screen (standalone) or Android (fullscreen, from the manifest).
+const standalone = navigator.standalone || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
 document.getElementById('install').hidden = !(isIOS && !standalone);
 
 async function showUsage() {

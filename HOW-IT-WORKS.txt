@@ -162,6 +162,8 @@ Touch on the iPad
   Move two fingers           look around while zoomed in
   Zoom-out button (circled minus)    back to the whole screen
   Star button (shown while zoomed)   smooth zoom on/off
+  Diagonal-arrow button (Android)    full screen on/off: hides Chrome's
+                             address bar and the phone's bars
   On an iPhone the game is laid out at desktop size and shrunk to fit;
   zoom in to reach the small icons.
 

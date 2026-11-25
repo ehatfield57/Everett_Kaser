@@ -41,8 +41,8 @@
                      background: rgba(30,30,30,.45); color: #fff; font: 20px/1 -apple-system, sans-serif;
                      padding: 0; opacity: .55; touch-action: manipulation; }
   #touchbar button.on { background: rgba(42,93,159,.9); opacity: .9; }
-  #touchbar #zoomBtn, #touchbar #hqBtn { display: none; }
-  #touchbar #zoomBtn.show, #touchbar #hqBtn.show { display: block; }
+  #touchbar #zoomBtn, #touchbar #hqBtn, #touchbar #fsBtn { display: none; }
+  #touchbar #zoomBtn.show, #touchbar #hqBtn.show, #touchbar #fsBtn.show { display: block; }
   /* the smoothed zoom (upscale.js), drawn over the game canvas */
   #hq { position: fixed; left: 0; top: 0; pointer-events: none; }
   #kbd { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0;
@@ -60,6 +60,7 @@
 <canvas id="screen" tabindex="0"></canvas>
 <div id="status">Starting…</div>
 <div id="touchbar">
+  <button id="fsBtn" title="Full screen" aria-label="Full screen">⤢</button>
   <button id="hqBtn" title="Smooth zoom" aria-label="Smooth zoom">✦</button>
   <button id="zoomBtn" title="Zoom out to the whole screen" aria-label="Zoom out">⊖</button>
   <button id="swipeBtn" title="Swipe = arrow keys" aria-label="Swipe for arrow keys">✥</button>

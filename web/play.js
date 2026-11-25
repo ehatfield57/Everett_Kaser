@@ -710,6 +710,31 @@ hqBtn.addEventListener('pointerdown', (e) => e.preventDefault());
 hqBtn.addEventListener('click', () => setHQ(!hqOn));
 hqBtn.classList.toggle('on', hqOn);
 
+// ⤢ hides Chrome's address bar and the phone's status and navigation bars
+// (the Fullscreen API, which only works from a tap).  Not shown in an Android
+// app installed from the manifest, which is already full screen, nor on
+// iPad/iPhone: an iPhone can't do it, and an iPad's Home Screen app is the way
+// there (Safari full screen fights the on-screen keyboard).
+const fsBtn = document.getElementById('fsBtn');
+const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+const appleTouch = /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent);
+const installedFull = matchMedia('(display-mode: fullscreen)').matches && !fsElement();
+if ((document.fullscreenEnabled || document.webkitFullscreenEnabled) && !appleTouch && !installedFull) {
+  fsBtn.classList.add('show');
+}
+function syncFs() { fsBtn.classList.toggle('on', !!fsElement()); }
+document.addEventListener('fullscreenchange', syncFs);
+document.addEventListener('webkitfullscreenchange', syncFs);
+fsBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+fsBtn.addEventListener('click', async () => {
+  const el = document.documentElement;
+  try {
+    if (fsElement()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' });
+    else el.webkitRequestFullscreen();
+  } catch { hint('This browser won\'t go full screen'); }
+});
+
 // The first time a game is shown on a phone, say how to zoom.
 function firstFrame() {
   try {
