@@ -1,7 +1,8 @@
 // Minimal headless-Chrome driver over the DevTools protocol (no dependencies).
 // usage: node cdp.mjs <url> <outdir> [steps.json]
 // steps: [{"wait":ms} | {"shot":"name"} | {"click":[x,y],"button":"left"} | {"key":"a"} | {"eval":"js"} | {"move":[x,y]}
-//         | {"sh":"shell command"} | {"goto":"url"} | {"clickSel":"css selector"} | {"targets":true}]
+//         | {"sh":"shell command"} | {"goto":"url"} | {"clickSel":"css selector"} | {"targets":true}
+//         | {"cdp":"Domain.method","params":{...}}]   e.g. Emulation.setEmulatedMedia to act as an installed app
 // CHROME_ARGS="--flag --flag2" adds Chrome command-line flags.
 // W, H set the window size; MOBILE=1 emulates a phone (viewport tags apply), DPR sets its pixel ratio.
 // PROFILE=<dir> keeps the browser profile (and anything the site stored) between runs.
@@ -65,6 +66,7 @@ for (const s of steps) {
   if (s.targets) logs.push('[targets] ' + JSON.stringify((await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).filter((t) => t.type === 'page').map((t) => t.url)));
   if (s.click) { const b = s.button || 'left'; await mouse('mouseMoved', ...s.click, 'none'); await mouse('mousePressed', ...s.click, b); await sleep(60); await mouse('mouseReleased', ...s.click, b); }
   if (s.key) { await cmd('Input.dispatchKeyEvent', { type: 'keyDown', key: s.key, windowsVirtualKeyCode: s.vk || s.key.toUpperCase().charCodeAt(0), text: s.text ?? s.key }); await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: s.key, windowsVirtualKeyCode: s.vk || s.key.toUpperCase().charCodeAt(0) }); }
+  if (s.cdp) { const r = await cmd(s.cdp, s.params || {}); if (r.error) logs.push('[cdp] ' + JSON.stringify(r.error)); }
   if (s.eval) { const r = await cmd('Runtime.evaluate', { expression: s.eval, returnByValue: true, awaitPromise: true }); logs.push('[eval] ' + JSON.stringify(r.result?.result?.value ?? r.result)); }
   if (s.shot) {
     const r = await cmd('Page.captureScreenshot', { format: 'png' });

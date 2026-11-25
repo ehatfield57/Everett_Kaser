@@ -141,7 +141,8 @@ document.getElementById('install').hidden = !(isIOS && !standalone);
 
 if (STATIC) {
   document.getElementById('lead').textContent =
-    'Pick a game to play. It downloads once, then plays from this device, even with no connection.';
+    'Pick a game to install it on this device as an app of its own, or to play it here. ' +
+    'Each game downloads once, then plays with no connection.';
   document.getElementById('keepLabel').hidden = true;
   document.getElementById('installWhy').textContent = 'To keep your games and saves safe';
   document.querySelector('#offline div').textContent =
@@ -157,6 +158,7 @@ if (STATIC) {
 let installPrompt = null;
 const installBtn = document.getElementById('installApp');
 window.addEventListener('beforeinstallprompt', (e) => {
+  if (STATIC) return;     // on a static site each game installs from its own page
   e.preventDefault();
   installPrompt = e;
   installBtn.hidden = false;
@@ -224,7 +226,8 @@ function makeCard(g) {
   card.className = 'card';
   const a = document.createElement('a');
   a.className = 'game';
-  a.href = PLAY + '?g=' + encodeURIComponent(g.name);
+  // On a static site a game opens its own page (install it, or play it there).
+  a.href = STATIC && g.page ? g.page : PLAY + '?g=' + encodeURIComponent(g.name);
   cards.set(g.name, { card, a, note: null, game: g });
   const img = document.createElement('img');
   img.src = iconURL(g.name);
@@ -244,7 +247,7 @@ function makeCard(g) {
   rm.onclick = () => removeGame(g.name);
   card.append(a, rm);
   card.dataset.name = g.name.toLowerCase();
-  a.addEventListener('click', (e) => { e.preventDefault(); openGame(g.name); });
+  if (!(STATIC && g.page)) a.addEventListener('click', (e) => { e.preventDefault(); openGame(g.name); });
   list.append(card);
   cards.set(g.name, { card, a, note, game: g });
 }

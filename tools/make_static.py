@@ -16,6 +16,9 @@ What it writes (into static/ unless --out says otherwise):
     packs/<game>/   <version>.json (the game's file list) and <version>.bin (its
                     files back to back), the same pack server.py sends
     soundbank.bin   the General MIDI sound bank the music plays with
+    <game>/         each game's own page (index.html, from web/game.html), its
+                    app manifest and a copy of play.html, so the game can be
+                    installed as an app of its own (e.g. Sherlock7/)
 
 Running it again only rewrites a game's pack when the game has changed.
 
@@ -28,11 +31,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import os
 import re
 import shutil
+import struct
 import sys
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -41,11 +47,14 @@ import server  # noqa: E402
 
 WEB = ROOT / "web"
 PAGES = ["index.html", "play.html"]
-NOT_COPIED = {"sw.js", "config.js", "setup.html"}     # rewritten here, or server.py only
+NOT_COPIED = {"sw.js", "config.js", "setup.html", "game.html"}   # rewritten here, or server.py only
+SITE_DIRS = {"web", "icons", "packs"}
+GAME_PAGE_MARK = b"web/gamepage.js"       # how a game's folder is recognised when cleaning up
 
 
 def slug(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-") or "game"
+    s = re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-") or "game"
+    return s + "-game" if s.lower() in SITE_DIRS else s
 
 
 def shown_paths(g: server.Game) -> dict:
@@ -115,10 +124,112 @@ def build_game(g: server.Game, out: Path) -> dict:
              "beta": g.beta, "index": f"packs/{s}/{ver}.json"}
     icon = server.icon_png(g)
     if icon:
-        dest = out / "icons" / (s + icon.suffix.lower())
-        write_if_changed(dest, icon.read_bytes())
+        png = icon.read_bytes()
+        if icon.suffix.lower() == ".ico":      # a Windows game: browsers want PNG to install an app
+            png = ico_to_png(png) or png
+        ext = ".png" if png.startswith(b"\x89PNG") else icon.suffix.lower()
+        dest = out / "icons" / (s + ext)
+        write_if_changed(dest, png)
         entry["icon"] = f"icons/{dest.name}"
+    entry["page"] = f"{s}/"
+    write_game_pages(out / s, entry)
     return entry
+
+
+# ------------------------------------------------------------ .ico -> .png
+def ico_to_png(data: bytes) -> bytes | None:
+    """The biggest picture in a Windows .ico file, as PNG.  Big icons are
+    usually stored as PNG already; smaller ones are bitmaps (32-bit with
+    alpha, or 24/8/4/1-bit with a transparency mask), converted here."""
+    try:
+        _, kind, count = struct.unpack_from("<HHH", data, 0)
+        if kind != 1:
+            return None
+        best = None
+        for i in range(count):
+            w, h, _, _, _, bits, size, off = struct.unpack_from("<BBBBHHII", data, 6 + 16 * i)
+            key = (w or 256, bits)
+            if best is None or key > best[0]:
+                best = (key, data[off:off + size])
+        if not best:
+            return None
+        img = best[1]
+        return img if img.startswith(b"\x89PNG") else dib_to_png(img)
+    except (struct.error, ValueError, IndexError, zlib.error):
+        return None
+
+
+def dib_to_png(dib: bytes) -> bytes | None:
+    hsize, w, h2, _, bits, compression = struct.unpack_from("<IiiHHI", dib, 0)
+    if compression != 0 or bits not in (1, 4, 8, 24, 32):
+        return None
+    h = abs(h2) // 2                          # the height counts the image and its mask
+    ncolors = struct.unpack_from("<I", dib, 32)[0] or (1 << bits if bits <= 8 else 0)
+    pal_at = hsize
+    pixels_at = pal_at + 4 * ncolors
+    stride = ((w * bits + 31) // 32) * 4
+    mask_at = pixels_at + stride * h
+    mask_stride = ((w + 31) // 32) * 4
+    palette = [dib[pal_at + 4 * i: pal_at + 4 * i + 3] for i in range(ncolors)]   # B, G, R
+    has_alpha = bits == 32 and any(dib[pixels_at + 3 + 4 * i] for i in range(w * h))
+    rows = []
+    for y in range(h):
+        src = pixels_at + (h - 1 - y) * stride            # bitmaps are stored bottom up
+        msk = mask_at + (h - 1 - y) * mask_stride
+        row = bytearray(b"\0")                          # PNG filter: none
+        for x in range(w):
+            if bits == 32:
+                b, g, r, a = dib[src + 4 * x: src + 4 * x + 4]
+            else:
+                if bits == 24:
+                    b, g, r = dib[src + 3 * x: src + 3 * x + 3]
+                else:
+                    per = 8 // bits
+                    byte = dib[src + x // per]
+                    idx = (byte >> (8 - bits * (x % per + 1))) & ((1 << bits) - 1)
+                    b, g, r = palette[idx]
+                a = 255
+            if not has_alpha:
+                transparent = msk + mask_stride <= len(dib) and dib[msk + x // 8] >> (7 - x % 8) & 1
+                a = 0 if transparent else 255
+            row += bytes((r, g, b, a))
+        rows.append(bytes(row))
+
+    def chunk(tag: bytes, body: bytes) -> bytes:
+        return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b""))
+
+
+def write_game_pages(folder: Path, entry: dict) -> None:
+    """The game's own folder, which can be installed as an app of its own:
+    index.html (the install and start page), manifest.webmanifest (the app's
+    name and icon) and play.html (the game page, kept inside the app's folder;
+    its <base> points at the site, and KASER_HOME back at index.html)."""
+    icon_url = "../" + entry["icon"] if "icon" in entry else "../app-icon.png"
+    game = {k: entry[k] for k in ("name", "version", "total", "index") if k in entry}
+    if "icon" in entry:
+        game["icon"] = entry["icon"]
+    page = (WEB / "game.html").read_text(encoding="utf-8")
+    page = (page.replace("__TITLE__", html.escape(entry["name"]))
+                .replace("__ICON__", html.escape(icon_url))
+                .replace("__GAME__", json.dumps(game).replace("</", "<\\/")))
+    write_if_changed(folder / "index.html", page.encode())
+
+    icon_type = "image/x-icon" if entry.get("icon", "").endswith(".ico") else "image/png"
+    manifest = {
+        "name": entry["name"], "short_name": entry["name"], "start_url": "./", "scope": "./",
+        "display": "standalone", "display_override": ["fullscreen"],
+        "background_color": "#1d1b18", "theme_color": "#1d1b18",
+        "icons": [{"src": icon_url, "sizes": "256x256", "type": icon_type}],
+    }
+    write_if_changed(folder / "manifest.webmanifest", json.dumps(manifest, indent=1).encode())
+
+    play = (WEB / "play.html").read_text(encoding="utf-8")
+    head = play.index("<head>") + len("<head>")
+    play = (play[:head] + '\n<base href="../">'
+            + "\n<script>self.KASER_HOME = new URL('./', location.href).href;</script>" + play[head:])
+    write_if_changed(folder / "play.html", play.encode())
 
 
 def main() -> int:
@@ -162,6 +273,11 @@ def main() -> int:
         for f in (out / "icons").iterdir():
             if f.stem not in keep:
                 f.unlink()
+    for d in out.iterdir():
+        page = d / "index.html"
+        if (d.is_dir() and d.name not in keep and d.name not in SITE_DIRS
+                and page.is_file() and GAME_PAGE_MARK in page.read_bytes()):
+            shutil.rmtree(d)
 
     bank = args.soundbank or server.SOUNDBANK
     if bank and bank.is_file():
@@ -176,8 +292,12 @@ def main() -> int:
 
     # The service worker's version covers the code and pages, so browsers
     # replace their offline copy when any of them changes.
+    pages = [p for e in entries for p in (e["page"], e["page"] + "play.html", e["page"] + "manifest.webmanifest")]
+    version = hashlib.sha1(version.encode() + (WEB / "game.html").read_bytes()
+                           + json.dumps(entries).encode()).hexdigest()[:16]
     sw = (WEB / "sw.js").read_text(encoding="utf-8")
-    sw = sw.replace("__VERSION__", version).replace("'__STATIC__'", "'true'")
+    sw = (sw.replace("__VERSION__", version).replace("'__STATIC__'", "'true'")
+            .replace("/*GAME_PAGES*/[]", json.dumps(pages)))
     write_if_changed(out / "sw.js", sw.encode())
 
     total = sum(e["total"] for e in entries)

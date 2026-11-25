@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- game.html - one game's own page on a static site, and the start page of
+     that game when it's installed as an app of its own.  tools/make_static.py
+     writes a copy into each game's folder (<game>/index.html) and fills in
+     __TITLE__, __ICON__ and __GAME__.  -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>__TITLE__</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="__ICON__">
+<link rel="apple-touch-icon" href="__ICON__">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="__TITLE__">
+<style>
+  :root { --bg: #f4f1ea; --card: #fffdf8; --ink: #2b2620; --muted: #7a7064; --line: #e2dccf; --accent: #8a3b1e; --ok: #3d7a3a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1b18; --card: #282521; --ink: #ece6dc; --muted: #a39a8c; --line: #3a362f; --accent: #e08a5c; --ok: #8cc788; }
+  }
+  * { box-sizing: border-box; }
+  body { min-height: 100vh; min-height: 100dvh; }
+  body { margin: 0; background: var(--bg); color: var(--ink); display: flex; align-items: center; justify-content: center;
+         font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 24px 16px;
+         padding-top: max(24px, env(safe-area-inset-top)); }
+  main { width: min(440px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+         padding: 28px 24px; text-align: center; }
+  main > img { width: 112px; height: 112px; object-fit: contain; }
+  h1 { font: 600 26px/1.2 Georgia, "Times New Roman", serif; margin: 10px 0 2px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .sub.ok { color: var(--ok); }
+  button { font: inherit; font-weight: 600; width: 100%; padding: 12px 16px; border-radius: 10px; cursor: pointer;
+           border: 1px solid var(--accent); background: var(--accent); color: var(--card); margin-top: 10px; }
+  button.plain { background: transparent; color: var(--accent); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  .steps { text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+           padding: 12px 16px; margin: 4px 0 6px; font-size: 15px; }
+  .steps ol { margin: 6px 0 0; padding-left: 22px; }
+  .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 14px 0 6px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 16px; }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <img id="icon" src="__ICON__" alt="">
+  <h1 id="name"></h1>
+  <p class="sub" id="state"></p>
+
+  <!-- in a browser: install, or play right here -->
+  <section id="browser" hidden>
+    <button id="install" hidden></button>
+    <div class="steps" id="iosSteps" hidden>
+      <b>To install it on this <span id="device">iPad</span>:</b>
+      <ol>
+        <li>Tap <b>Share</b> (the square with an arrow) in Safari.</li>
+        <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+        <li>Open <b id="iosName"></b> from your Home Screen. It downloads the game the first time.</li>
+      </ol>
+    </div>
+    <div class="steps" id="otherSteps" hidden>
+      To install it, use your browser's <b>Install app</b> or <b>Add to Home screen</b> (in Chrome, the
+      install icon in the address bar or the ⋮ menu). If it's installed already, open it from your apps.
+    </div>
+    <button class="plain" id="playHere">Play in this browser</button>
+  </section>
+
+  <!-- in the installed app -->
+  <section id="app" hidden>
+    <button id="play">Play</button>
+  </section>
+
+  <div id="progress" hidden>
+    <div class="bar"><i id="fill"></i></div>
+    <div id="progressText" class="note" style="margin-top:0"></div>
+  </div>
+
+  <p class="note" id="allGames"><a href="../">All games</a></p>
+</main>
+<script id="game" type="application/json">__GAME__</script>
+<script src="../web/config.js"></script>
+<script src="../web/store.js"></script>
+<script src="../web/gamepage.js"></script>
+</body>
+</html>

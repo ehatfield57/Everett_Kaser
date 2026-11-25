@@ -272,11 +272,33 @@ python3 tools/make_static.py --game Sherlock7 --game Crocotile   # or just these
 cd static && python3 -m http.server 8000 --bind 127.0.0.1
 ```
 
-Then open <http://localhost:8000/> in Chrome. Picking a game downloads it
-once; after that it plays from the browser's storage, even with the web
-server stopped. Chrome and Edge show an **Install app** button. The site
-is about 2 GB with all 41 games. Running the script again only rewrites the
-games that changed.
+On Windows, in Command Prompt in this folder, use `py` instead of `python3`
+(or `python`, whichever runs; see [Running on Windows](#running-on-windows)):
+
+```
+py tools\make_static.py
+cd static
+py -m http.server 8000 --bind 127.0.0.1
+```
+
+The games' icons on Windows come out of their `.exe` files; the script turns
+them into PNG pictures, which browsers need before they will install a game as
+an app.
+
+Then open <http://localhost:8000/> in Chrome. It shows all the games.
+Picking one opens that game's own page (for example
+`http://localhost:8000/Sherlock7/`), which offers:
+
+- **Install Sherlock7**: installs the game as an app of its own, with its
+  name and icon (Chrome and Edge; on iPad and iPhone the page shows the Share
+  → **Add to Home Screen** steps instead). The app downloads the game the
+  first time it opens, then goes straight into the game every time after
+  that, with no connection needed. Leaving the game shows a **Play** button.
+- **Play in this browser**: downloads the game once and plays it right there.
+
+The site is about 2 GB with all 41 games. Running the script again only
+rewrites the games that changed, and an installed game updates itself the
+next time it opens while the site can be reached.
 
 How it differs from `server.py`:
 
@@ -294,9 +316,11 @@ How it differs from `server.py`:
 ### The static site on an iPad, iPhone or Android device
 
 Other devices on your Wi-Fi need `https://`. Python 3.14 and newer can serve
-it themselves (check with `python3 --version`), using the same certificate
-`server.py` uses, which your devices already trust if they play from
-`server.py` over the network. In Terminal:
+it themselves (check that `python3 -m http.server --help` lists `--tls-cert`),
+using the same certificate `server.py` uses, which your devices already trust
+if they play from `server.py` over the network.
+
+On a Mac, in Terminal:
 
 ```
 cd static
@@ -310,6 +334,17 @@ its own certificate instead, use `--tls-cert ../tls/server.pem --tls-key
 ../tls/server-key.pem`; run `server.py` once first if the address of this
 computer has changed, so it renews the certificate for the new address.
 
+On Windows, in Command Prompt, with the certificate `server.py` made (type the
+second command all on one line; Command Prompt doesn't continue lines with `\`):
+
+```
+cd static
+py -m http.server 8443 --tls-cert ..\tls\server.pem --tls-key ..\tls\server-key.pem -H Cross-Origin-Opener-Policy same-origin -H Cross-Origin-Embedder-Policy require-corp
+```
+
+The first time, Windows Firewall asks whether Python may accept connections:
+allow it on private networks, or other devices can't reach it.
+
 The two `-H` lines send the security headers the games need. The page's
 service worker adds them too, but sending them from the server is surer,
 especially in Safari. The server listens on your whole network while it runs,
@@ -319,10 +354,11 @@ Then, on the device:
 
 1. Open `https://192.168.1.20:8443/` (this computer's address; `server.py`
    prints it when it starts). There should be no certificate warning.
-2. Install it as an app: on iPad or iPhone, Share → **Add to Home Screen**;
-   on Android, **Install app** on the page or in Chrome's ⋮ menu.
-3. Open the app and download the games from inside it. A Home Screen app
-   has its own storage, separate from Safari's.
+2. Tap a game, then install it: on iPad or iPhone, Share → **Add to Home
+   Screen**; on Android, **Install** on the game's page or in Chrome's ⋮ menu.
+3. Open the game from the Home Screen. It downloads the game the first time.
+   On iPad and iPhone each Home Screen app has its own storage, separate from
+   Safari's and from the other games' apps, so its saves stay with that app.
 
 After that the games play from the app with this computer turned off.
 

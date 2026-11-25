@@ -19,12 +19,15 @@ const DATA = 'data';            // game list, icons, sound bank: kept across ver
 // static site works in a sub-folder of a web site too.
 const BASE = new URL(self.registration.scope).pathname;
 const ENGINE_FILES = [
-  'web/config.js', 'web/play.js', 'web/upscale.js', 'web/worker.js', 'web/store.js', 'web/fs.js', 'web/download.js',
+  'web/config.js', 'web/gamepage.js', 'web/play.js', 'web/upscale.js', 'web/worker.js', 'web/store.js', 'web/fs.js', 'web/download.js',
   'web/kint5.js', 'web/kint5.wasm', 'web/kint6.js', 'web/kint6.wasm',
   'web/vendor/spessasynth.js', 'web/vendor/spessasynth_processor.min.js',
 ];
 const PLAY = STATIC ? 'play.html' : 'play';
-const SHELL_FILES = ['', PLAY, 'manifest.webmanifest', ...ENGINE_FILES];
+// Each game's own pages on a static site (<game>/, its play.html and app
+// manifest), filled in by tools/make_static.py.
+const GAME_PAGES = /*GAME_PAGES*/[];
+const SHELL_FILES = ['', PLAY, 'manifest.webmanifest', ...ENGINE_FILES, ...GAME_PAGES];
 const SOUNDBANK = STATIC ? 'soundbank.bin' : 'api/soundbank';
 const DATA_FILES = [SOUNDBANK, 'app-icon.png'];
 const GAME_LIST = STATIC ? 'games.json' : 'api/games';
@@ -117,7 +120,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin || !url.pathname.startsWith(BASE)) return;
   let p = url.pathname.slice(BASE.length);
-  if (p === 'index.html') p = '';
+  if (p === 'index.html' || p.endsWith('/index.html')) p = p.slice(0, -'index.html'.length);
   if (p === '' || p === PLAY || SHELL_FILES.includes(p)) return answer(e, shellFile(p, req));
   if (!STATIC && p.startsWith('web/')) return answer(e, shellFile(p, req));
   if (p === GAME_LIST || p.startsWith('api/info/')) return answer(e, networkFirst(req));

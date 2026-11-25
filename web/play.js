@@ -3,8 +3,11 @@
 'use strict';
 
 const params = new URLSearchParams(location.search);
-// Addresses are relative to this page, so a static site can live in a sub-folder.
-const here = (p) => new URL(p, location.href).href;
+// Addresses are relative to the site (the page's <base>, else the page), so a
+// static site can live in a sub-folder.  A game installed as its own app has
+// its own copy of this page in the game's folder (tools/make_static.py), with a
+// <base> pointing at the site and KASER_HOME at the game's own start page.
+const here = (p) => new URL(p, document.baseURI).href;
 const GAME = params.get('g') || '';
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -59,7 +62,7 @@ function backToGames() {
       try { opener.focus(); } catch {}
       window.close();
     }
-    if (!window.closed) location.href = here('./');
+    if (!window.closed) location.href = self.KASER_HOME ? self.KASER_HOME + '?exited=1' : here('./');
   });
 }
 
