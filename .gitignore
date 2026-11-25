@@ -26,3 +26,6 @@ __pycache__/
 
 # The server's own certificate authority and certificate (certs.py); private to this computer
 tls/
+
+# Static copy of the site made by tools/make_static.py (holds copies of the games)
+static/

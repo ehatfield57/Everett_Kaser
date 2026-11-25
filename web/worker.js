@@ -6,7 +6,7 @@
 // Files come from the copy of the game kept on this device when there is one
 // (m.local), otherwise from the server.
 
-importScripts('/web/store.js', '/web/fs.js');
+importScripts('store.js', 'fs.js');
 
 async function openFS(m) {
   if (!m.local) return serverFS(m.game);
@@ -31,12 +31,12 @@ onmessage = async (e) => {
         musicEnabled: !!m.music,
         cursor: -1,
       },
-      locateFile: (p) => '/web/' + p,
+      locateFile: (p) => new URL(p, self.location.href).href,
       print: (s) => console.log(s),
       printErr: (s) => console.error(s),
     };
     const engine = m.engine === 6 ? 6 : 5;
-    importScripts(`/web/kint${engine}.js`);
+    importScripts(`kint${engine}.js`);
     const create = engine === 6 ? createKint6 : createKint5;
     const mod = await create(moduleArg);
     mod.ccall('kp_set_paths', null, ['string', 'string'], [m.pgmShown || 'pgm/', m.appShown || 'app/']);

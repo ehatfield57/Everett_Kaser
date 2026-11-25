@@ -69,6 +69,10 @@ const KStore = (() => {
     const sharedRecs = shared.length ? await Promise.all(shared.map((k) => req(d.transaction('saves').objectStore('saves').get(k)))) : [];
     return mine.concat(sharedRecs.filter(Boolean));
   }
+  async function allSaves() {
+    const d = await db();
+    return req(d.transaction('saves').objectStore('saves').getAll());
+  }
   async function hasSaves(game) {
     const d = await db();
     const lo = game.toLowerCase() + '/';
@@ -104,6 +108,6 @@ const KStore = (() => {
     return encodeURIComponent(game).replace(/\./g, '%2E') + '_' + version + '.bin';
   }
 
-  return { getGame, allGames, putGame, deleteGame, loadSaves, hasSaves, applySaves,
+  return { getGame, allGames, putGame, deleteGame, loadSaves, allSaves, hasSaves, applySaves,
            packsDir, packFile, removePack, packName };
 })();

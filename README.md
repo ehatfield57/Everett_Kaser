@@ -259,6 +259,44 @@ Details:
   page; on other devices that box starts ticked.
 - Games that aren't downloaded still play straight from the server, as before.
 
+## A static site (no server.py)
+
+`tools/make_static.py` writes the whole site as plain files into `static/`,
+which any web server can serve, with no `server.py` behind it: Python's
+built-in server, GitHub Pages or an ordinary web host. It's an experiment
+toward Everett hosting the games on his own site.
+
+```
+python3 tools/make_static.py                                  # every game in games/
+python3 tools/make_static.py --game Sherlock7 --game Crocotile   # or just these
+cd static && python3 -m http.server 8000 --bind 127.0.0.1
+```
+
+Then open <http://localhost:8000/> in Chrome. Picking a game downloads it
+once; after that it plays from the browser's storage, even with the web
+server stopped. Chrome and Edge show an **Install app** button. The site
+is about 2 GB with all 41 games. Running the script again only rewrites the
+games that changed.
+
+How it differs from `server.py`:
+
+- Every game is downloaded before it plays; there's nothing to play it from
+  otherwise.
+- Saves stay in each browser. **Export saves** and **Import saves** at the
+  bottom of the page copy them to and from a file, to back them up or move
+  them to another device. Saves in `saves/` aren't copied in.
+- The page's service worker (`web/sw.js`) adds the security headers the games
+  need (cross-origin isolation), which `server.py` sends itself. On the very
+  first visit the game page reloads itself once to pick them up.
+- Like `server.py`, it only runs on a secure page: `http://localhost` on this
+  computer, or `https://` anywhere else. Python's built-in server can't do
+  `https://`, so to try it on an iPad or phone, the site has to be on a
+  real `https://` host.
+
+`static/` holds copies of the games and macOS's own sound bank, so it's left
+out of git. Don't put it anywhere public unless Everett says so; a public site
+also needs a freely licensed General MIDI sound bank (`--soundbank FILE.sf2`).
+
 ## Your saves
 
 Everything a game writes goes into `saves/<game name>/`, using the same file

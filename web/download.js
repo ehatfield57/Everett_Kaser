@@ -1,23 +1,26 @@
-// download.js - copies a game from the server onto this device (a worker,
-// because only workers can write files to the origin private file system
-// in every browser).
+// download.js - copies a game onto this device (a worker, because only
+// workers can write files to the origin private file system in every browser).
 //
-//   in:   {game}
+//   in:   {game, index, icon, server}   index, icon: URLs of the game's file
+//         list and icon; server: true when server.py is the source
 //   out:  {t: 'progress', done, total} ... then {t: 'done'} or {t: 'error', text}
 //
 // The game's files go into one pack file; the index of what is where goes
-// into IndexedDB.  The first time a game is downloaded, the player's saves on
-// the server are copied too, so progress carries over.
+// into IndexedDB.  The first time a game is downloaded from server.py, the
+// player's saves there are copied too, so progress carries over.
+//
+// The file list says where the game's data is ("data", on a static site), or
+// server.py sends it from /api/pack/<game>/data.
 'use strict';
-importScripts('/web/store.js');
+importScripts('store.js');
 
 onmessage = async (e) => {
   const game = e.data.game;
   let handle = null, dir = null, name = null;
   try {
     const enc = encodeURIComponent(game);
-    const ires = await fetch(`/api/pack/${enc}/index`, { cache: 'no-store' });
-    if (!ires.ok) throw new Error(`The server couldn't list the game's files (${ires.status}).`);
+    const ires = await fetch(e.data.index, { cache: 'no-store' });
+    if (!ires.ok) throw new Error(`The game's list of files couldn't be fetched (${ires.status}).`);
     const index = await ires.json();
     const old = await KStore.getGame(game);
 
@@ -27,7 +30,8 @@ onmessage = async (e) => {
     const fh = await dir.getFileHandle(name, { create: true });
     handle = await fh.createSyncAccessHandle();
     await handle.truncate(0);
-    const res = await fetch(`/api/pack/${enc}/data?v=${index.version}`, { cache: 'no-store' });
+    const data = index.data ? new URL(index.data, e.data.index).href : `/api/pack/${enc}/data?v=${index.version}`;
+    const res = await fetch(data, { cache: 'no-store' });
     if (!res.ok) throw new Error(`The download failed (${res.status}).`);
     const reader = res.body.getReader();
     let at = 0, last = 0;
@@ -50,7 +54,7 @@ onmessage = async (e) => {
     handle = null;
 
     // 2. saves, the first time only (later the device's own saves win)
-    if (!(await KStore.hasSaves(game))) {
+    if (e.data.server && !(await KStore.hasSaves(game))) {
       postMessage({ t: 'progress', done: at, total: index.total, note: 'Copying saved games…' });
       const list = await (await fetch(`/api/saves/${enc}`, { cache: 'no-store' })).json();
       const ops = [];
@@ -66,7 +70,7 @@ onmessage = async (e) => {
     // 3. the icon, kept with the game so the home page shows it with the server off
     let icon = null, iconType = '';
     try {
-      const r = await fetch(`/api/icon/${enc}`);
+      const r = await fetch(e.data.icon);
       if (r.ok) { icon = new Uint8Array(await r.arrayBuffer()); iconType = r.headers.get('Content-Type') || 'image/png'; }
     } catch {}
 

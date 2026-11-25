@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kaser Games</title>
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/app-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="app-icon.png">
+<link rel="apple-touch-icon" href="app-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Kaser Games">
 <style>
@@ -54,33 +55,41 @@
   footer button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line);
                   background: var(--card); color: var(--ink); cursor: pointer; }
   footer button:disabled { opacity: .5; cursor: default; }
+  footer label[hidden], footer button[hidden] { display: none; }
+  #installApp { margin-top: 16px; margin-left: 8px; font: inherit; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+                border: 1px solid var(--accent); background: var(--accent); color: var(--card); }
+  #installApp[hidden] { display: none; }
 </style>
 </head>
 <body>
 <header>
   <h1>Everett Kaser's Games</h1>
-  <p>Running from your own copies, in the browser. Pick a game to play.</p>
-  <input id="filter" type="search" placeholder="Filter games…" autocomplete="off">
+  <p id="lead">Running from your own copies, in the browser. Pick a game to play.</p>
+  <input id="filter" type="search" placeholder="Filter games…" autocomplete="off"><button id="installApp" hidden>Install app</button>
 </header>
 <div class="notice" id="offline" hidden><div>Can't reach the game server, so only games stored on this device can be played. Either the server isn't running, or this device doesn't trust its security certificate (see “Playing on other devices” in the README).</div></div>
 <div class="notice" id="insecure" hidden><div>Chrome only lets the games run on a secure page, and this
   address isn't one. On the computer running the server, use <b>http://localhost:8765</b>. On other devices,
   open <a id="setupLink" href="/setup">the setup page</a> to trust the server once; if it says the server has
   no certificate, see “Playing on other devices” in the README.</div></div>
-<div class="notice" id="install" hidden><div>To play without your Mac, add this page to your Home Screen
+<div class="notice" id="install" hidden><div><span id="installWhy">To play without your Mac</span>, add this page to your Home Screen
   (Share&nbsp;→ Add to Home Screen) and play from there. Games downloaded in the browser are stored separately
   from the Home Screen app, and the browser may clear them if you don't visit for a few weeks.</div></div>
 <main id="list"></main>
 <footer>
   <div class="settings">
-    <label><input type="checkbox" id="keep"> Keep games on this device when I play them</label>
+    <label id="keepLabel"><input type="checkbox" id="keep"> Keep games on this device when I play them</label>
     <button id="all">Download all games</button>
     <button id="removeAll" hidden>Remove all games from this device</button>
+    <button id="exportSaves" title="Save a backup of your saved games on this device to a file">Export saves</button>
+    <button id="importSaves" title="Load saved games from an exported file">Import saves</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
     <span id="usage"></span>
   </div>
   Games © Everett Kaser Software — www.kaser.com. KINT interpreter used for personal use under its license.
 </footer>
-<script src="/web/store.js"></script>
+<script src="web/config.js"></script>
+<script src="web/store.js"></script>
 <script>
 'use strict';
 const list = document.getElementById('list');
@@ -89,6 +98,8 @@ const keepBox = document.getElementById('keep');
 const allBtn = document.getElementById('all');
 const usageEl = document.getElementById('usage');
 const removeAllBtn = document.getElementById('removeAll');
+const STATIC = !!self.KASER_STATIC;   // a static site (tools/make_static.py) rather than server.py
+const PLAY = STATIC ? 'play.html' : 'play';
 let online = true;
 let busy = false, reloadWhenIdle = false;   // busy: a download is running
 const stored = new Map();      // name -> KStore record
@@ -97,12 +108,12 @@ const cards = new Map();       // name -> {card, a, note, game}
 // ---------------------------------------------------------------- service worker
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('/sw.js').catch((err) => {
+  navigator.serviceWorker.register('sw.js').catch((err) => {
     console.warn('offline support unavailable:', err);
     // Reached by tapping past Chrome's certificate warning?  Chrome won't
     // register a service worker then.  If the server answers, that's the
     // reason: this device doesn't trust it yet, so show how to set it up.
-    if (location.protocol === 'https:' && !hadController) {
+    if (!STATIC && location.protocol === 'https:' && !hadController) {
       fetch('/api/ping', { cache: 'no-store' }).then((r) => { if (r.ok) location.replace('/setup'); }, () => {});
     }
   });
@@ -116,6 +127,7 @@ if ('serviceWorker' in navigator) {
 // --------------------------------------------------------------------- settings
 const isLocalHost = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
 function keepGames() {
+  if (STATIC) return true;      // nothing to play from but a downloaded copy
   try { const v = localStorage.getItem('keepGames'); if (v !== null) return v === '1'; } catch {}
   return !isLocalHost;          // on the Mac itself there's no need
 }
@@ -126,6 +138,37 @@ const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platfor
 // An installed app: iPad/iPhone Home Screen (standalone) or Android (fullscreen, from the manifest).
 const standalone = navigator.standalone || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
 document.getElementById('install').hidden = !(isIOS && !standalone);
+
+if (STATIC) {
+  document.getElementById('lead').textContent =
+    'Pick a game to play. It downloads once, then plays from this device, even with no connection.';
+  document.getElementById('keepLabel').hidden = true;
+  document.getElementById('installWhy').textContent = 'To keep your games and saves safe';
+  document.querySelector('#offline div').textContent =
+    'No connection to the games web site, so only games already on this device can be played.';
+  document.querySelector('#insecure div').textContent =
+    'The games only run on a secure page (https://, or http://localhost on the computer serving them), ' +
+    'and this address isn\'t one.';
+}
+
+// Chrome and Edge (Windows, Mac, Android) can install the page as an app; they
+// say so with this event, and the button asks for the install.  Safari can't
+// (see the Home Screen notice above).
+let installPrompt = null;
+const installBtn = document.getElementById('installApp');
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try { await installPrompt.userChoice; } catch {}
+  installPrompt = null;
+  installBtn.hidden = true;
+});
+window.addEventListener('appinstalled', () => { installBtn.hidden = true; });
 
 async function showUsage() {
   const n = stored.size;
@@ -148,7 +191,13 @@ function iconURL(name) {
   if (rec && rec.icon) {
     try { return URL.createObjectURL(new Blob([rec.icon], { type: rec.iconType || 'image/png' })); } catch {}
   }
-  return '/api/icon/' + encodeURIComponent(name);
+  return iconSrc(name);
+}
+// Where a game's icon is on the site.
+function iconSrc(name) {
+  const c = cards.get(name);
+  if (STATIC) return c && c.game.icon ? c.game.icon : '';
+  return 'api/icon/' + encodeURIComponent(name);
 }
 
 // Games downloaded before icons were kept: fetch their icons now.
@@ -156,7 +205,9 @@ async function addMissingIcons() {
   for (const rec of stored.values()) {
     if (rec.icon) continue;
     try {
-      const r = await fetch('/api/icon/' + encodeURIComponent(rec.name), { cache: 'no-store' });
+      const src = iconSrc(rec.name);
+      if (!src) continue;
+      const r = await fetch(src, { cache: 'no-store' });
       if (!r.ok || r.headers.get('X-Kaser-Offline')) continue;
       const fresh = await KStore.getGame(rec.name);
       if (!fresh) continue;
@@ -173,7 +224,8 @@ function makeCard(g) {
   card.className = 'card';
   const a = document.createElement('a');
   a.className = 'game';
-  a.href = '/play?g=' + encodeURIComponent(g.name);
+  a.href = PLAY + '?g=' + encodeURIComponent(g.name);
+  cards.set(g.name, { card, a, note: null, game: g });
   const img = document.createElement('img');
   img.src = iconURL(g.name);
   img.alt = '';
@@ -216,7 +268,7 @@ async function load() {
   try { for (const r of await KStore.allGames()) stored.set(r.name, r); } catch (err) { console.warn(err); }
   let games = null;
   try {
-    const res = await fetch('/api/games');
+    const res = await fetch(STATIC ? 'games.json' : 'api/games', STATIC ? { cache: 'no-cache' } : {});
     online = res.ok && !res.headers.get('X-Kaser-Offline');
     if (res.ok) games = await res.json();
   } catch { online = false; }
@@ -249,7 +301,7 @@ function download(name) {
   c.a.append(bar);
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   return new Promise((resolve) => {
-    const w = new Worker('/web/download.js');
+    const w = new Worker('web/download.js');
     w.onmessage = async (e) => {
       const m = e.data;
       if (m.t === 'progress') {
@@ -273,7 +325,13 @@ function download(name) {
       }
     };
     w.onerror = (e) => { w.onmessage({ data: { t: 'error', text: e.message || 'unknown error' } }); };
-    w.postMessage({ game: name });
+    const enc = encodeURIComponent(name);
+    const abs = (p) => new URL(p, location.href).href;
+    w.postMessage({
+      game: name, server: !STATIC,
+      index: abs(STATIC ? c.game.index : `api/pack/${enc}/index`),
+      icon: abs(iconSrc(name) || 'app-icon.png'),
+    });
   });
 }
 
@@ -298,7 +356,7 @@ function gameWindow(name) {
   return null;
 }
 function launch(name, w) {
-  const url = '/play?g=' + encodeURIComponent(name);
+  const url = PLAY + '?g=' + encodeURIComponent(name);
   if (!w) { location.href = url; return; }     // popups blocked: use this window
   if (isBlank(w)) w.location.replace(url);
   w.focus();
@@ -313,7 +371,7 @@ async function openGame(name) {
   const rec = stored.get(name);
   if (!rec && !online) return;
   const update = !!(rec && online && c.game.version && rec.version !== c.game.version);
-  const fetchFirst = rec ? update : keepBox.checked;
+  const fetchFirst = rec ? update : keepGames();
   // Open the game's window now, while this still counts as the click.  Chrome
   // blocks a window opened later, after a download has finished.
   const w = standalone ? null : gameWindow(name);
@@ -337,7 +395,7 @@ async function openGame(name) {
       if (update) await download(name);
       return play();      // an old copy still plays if the update failed
     }
-    if (keepBox.checked) {
+    if (keepGames()) {
       if (await download(name)) play();
       else if (w && isBlank(w)) w.close();
       return;
@@ -384,6 +442,62 @@ removeAllBtn.addEventListener('click', async () => {
     showUsage();
     idle();
   }
+});
+
+// ------------------------------------------------------------ saves backup
+// Saved games live in this browser only.  Export writes them all to one file
+// (to keep, or to carry to another device); Import adds a file's saves here,
+// replacing files with the same name.
+function b64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function unb64(text) {
+  const s = atob(text), out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+document.getElementById('exportSaves').addEventListener('click', async () => {
+  const recs = await KStore.allSaves();
+  // not the SIZED_* picture caches: the games rebuild those (as server.py's save_files)
+  const cache = (r) => /^SIZED_/i.test(r.path.split('/').pop()) || r.path.endsWith('.tmp');
+  const files = recs.filter((r) => !r.dir && r.data && !cache(r)).map((r) => ({ path: r.path, mtime: r.mtime, data: b64(r.data) }));
+  const dirs = recs.filter((r) => r.dir).map((r) => ({ path: r.path, mtime: r.mtime }));
+  if (!files.length) { alert('There are no saved games on this device yet.'); return; }
+  const blob = new Blob([JSON.stringify({ kaserSaves: 1, exported: new Date().toISOString(), dirs, files })],
+                        { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `kaser-saves-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+});
+
+const importFile = document.getElementById('importFile');
+document.getElementById('importSaves').addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', async () => {
+  const f = importFile.files[0];
+  importFile.value = '';
+  if (!f) return;
+  let doc;
+  try { doc = JSON.parse(await f.text()); } catch { doc = null; }
+  if (!doc || doc.kaserSaves !== 1 || !Array.isArray(doc.files)) {
+    alert('That file isn\'t a saved-games file exported from this page.');
+    return;
+  }
+  const games = new Set(doc.files.map((x) => x.path.split('/')[0]));
+  if (!confirm(`Import ${doc.files.length} saved file${doc.files.length === 1 ? '' : 's'} ` +
+               `(${[...games].sort().join(', ')})?\n\nFiles with the same name on this device are replaced. ` +
+               'Close any open games first.')) return;
+  const ops = [];
+  for (const d of doc.dirs || []) ops.push({ op: 'put', rec: { path: d.path, data: null, dir: true, mtime: d.mtime } });
+  for (const x of doc.files) ops.push({ op: 'put', rec: { path: x.path, data: unb64(x.data), dir: false, mtime: x.mtime } });
+  try { await KStore.applySaves(ops); } catch (err) { alert('The saves could not be imported.\n\n' + err); return; }
+  alert('Saved games imported.');
 });
 
 function applyFilter() {

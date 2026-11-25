@@ -3,6 +3,8 @@
 'use strict';
 
 const params = new URLSearchParams(location.search);
+// Addresses are relative to this page, so a static site can live in a sub-folder.
+const here = (p) => new URL(p, location.href).href;
 const GAME = params.get('g') || '';
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -57,7 +59,7 @@ function backToGames() {
       try { opener.focus(); } catch {}
       window.close();
     }
-    if (!window.closed) location.href = '/';
+    if (!window.closed) location.href = here('./');
   });
 }
 
@@ -117,9 +119,9 @@ function musicSetup() {
   if (!music.setup) {
     music.setup = (async () => {
       const ac = audioCtx();
-      await ac.audioWorklet.addModule('/web/vendor/spessasynth_processor.min.js');
-      const { WorkletSynthesizer, Sequencer } = await import('/web/vendor/spessasynth.js');
-      const bank = await (await fetch('/api/soundbank')).arrayBuffer();
+      await ac.audioWorklet.addModule(here('web/vendor/spessasynth_processor.min.js'));
+      const { WorkletSynthesizer, Sequencer } = await import(here('web/vendor/spessasynth.js'));
+      const bank = await (await fetch(here(self.KASER_STATIC ? 'soundbank.bin' : 'api/soundbank'))).arrayBuffer();
       const synth = new WorkletSynthesizer(ac);
       synth.connect(ac.destination);
       await synth.soundBankManager.addSoundBank(bank, 'main');
@@ -293,7 +295,7 @@ function zoomOut() {
 }
 
 // ----------------------------------------------------------------- worker
-const worker = new Worker('/web/worker.js');
+const worker = new Worker(here('web/worker.js'));
 worker.onerror = (e) => showCrash(e.message || 'worker error');
 worker.onmessage = (e) => {
   const m = e.data;
@@ -339,9 +341,27 @@ function showCrash(text) {
 }
 
 async function start() {
+  if (!crossOriginIsolated && self.KASER_STATIC && window.isSecureContext && 'serviceWorker' in navigator) {
+    // On a static site the service worker adds the headers that turn on
+    // isolation (see sw.js).  If it wasn't in charge of this page yet (the
+    // very first visit), wait for it and load the page again, once.
+    const key = 'kaser.isolationReload';
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1');
+      statusEl.textContent = 'Getting ready…';
+      try { await navigator.serviceWorker.register(here('sw.js')); } catch {}
+      await navigator.serviceWorker.ready;
+      location.reload();
+      return;
+    }
+  }
+  sessionStorage.removeItem('kaser.isolationReload');
   if (!crossOriginIsolated) {
     showCrash(window.isSecureContext
-      ? 'This page must be served by server.py (it needs cross-origin isolation for SharedArrayBuffer).'
+      ? (self.KASER_STATIC
+        ? 'This browser didn\'t allow the setup the games need (cross-origin isolation for SharedArrayBuffer). ' +
+          'Try reloading the page.'
+        : 'This page must be served by server.py (it needs cross-origin isolation for SharedArrayBuffer).')
       : 'Chrome only runs the games on a secure page, and this address isn\'t one. ' +
         'Open /setup on this device to set it up (once), then play from the https:// address.');
     return;
@@ -350,12 +370,14 @@ async function start() {
   // Use the copy kept on this device if there is one, otherwise the server.
   let info = null, local = false;
   try { info = await KStore.getGame(GAME); local = !!info; } catch {}
-  if (!info) {
-    try { info = await (await fetch('/api/info/' + encodeURIComponent(GAME))).json(); } catch {}
+  if (!info && !self.KASER_STATIC) {
+    try { info = await (await fetch(here('api/info/' + encodeURIComponent(GAME)))).json(); } catch {}
   }
   if (!info) {
-    showBox('<p><b>This game isn\'t stored on this device, and the game server can\'t be reached.</b></p>' +
-      '<p>Start the server on your Mac, or pick a game that has been downloaded.</p>',
+    showBox(self.KASER_STATIC
+      ? '<p><b>This game isn\'t on this device yet.</b></p><p>Go back to the games and pick it there to download it.</p>'
+      : '<p><b>This game isn\'t stored on this device, and the game server can\'t be reached.</b></p>' +
+        '<p>Start the server on your Mac, or pick a game that has been downloaded.</p>',
       [button('Back to games', backToGames, true)]);
     return;
   }
